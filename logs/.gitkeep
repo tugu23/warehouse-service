@@ -1,0 +1,5 @@
+# Logs directory
+# Log files will be automatically created here by Winston
+
+*.log
+

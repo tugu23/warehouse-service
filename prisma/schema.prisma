@@ -1,0 +1,145 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Role {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique @db.VarChar(50)
+  employees Employee[]
+
+  @@map("roles")
+}
+
+model Employee {
+  id            Int              @id @default(autoincrement())
+  name          String           @db.VarChar(255)
+  email         String           @unique @db.VarChar(255)
+  phoneNumber   String?          @map("phone_number") @db.VarChar(50)
+  passwordHash  String           @map("password_hash") @db.VarChar(255)
+  roleId        Int              @map("role_id")
+  isActive      Boolean          @default(true) @map("is_active")
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  
+  role          Role             @relation(fields: [roleId], references: [id])
+  orders        Order[]          @relation("AgentOrders")
+  customers     Customer[]       @relation("AssignedAgent")
+  locations     AgentLocation[]
+
+  @@map("employees")
+}
+
+model Supplier {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(255)
+  contactInfo String?   @map("contact_info") @db.Text
+  products    Product[]
+
+  @@map("suppliers")
+}
+
+model Product {
+  id             Int          @id @default(autoincrement())
+  nameMongolian  String       @map("name_mongolian") @db.VarChar(255)
+  nameEnglish    String?      @map("name_english") @db.VarChar(255)
+  productCode    String?      @unique @map("product_code") @db.VarChar(100)
+  supplierId     Int?         @map("supplier_id")
+  stockQuantity  Int          @default(0) @map("stock_quantity")
+  priceWholesale Decimal?     @map("price_wholesale") @db.Decimal(10, 2)
+  priceRetail    Decimal?     @map("price_retail") @db.Decimal(10, 2)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  
+  supplier       Supplier?    @relation(fields: [supplierId], references: [id])
+  orderItems     OrderItem[]
+  returns        Return[]
+
+  @@map("products")
+}
+
+model CustomerType {
+  id        Int        @id @default(autoincrement())
+  typeName  String     @map("type_name") @db.VarChar(100)
+  customers Customer[]
+
+  @@map("customer_types")
+}
+
+model Customer {
+  id                   Int           @id @default(autoincrement())
+  name                 String        @db.VarChar(255)
+  address              String?       @db.Text
+  phoneNumber          String?       @map("phone_number") @db.VarChar(50)
+  locationLatitude     Float?        @map("location_latitude")
+  locationLongitude    Float?        @map("location_longitude")
+  customerTypeId       Int?          @map("customer_type_id")
+  assignedAgentId      Int?          @map("assigned_agent_id")
+  
+  customerType         CustomerType? @relation(fields: [customerTypeId], references: [id])
+  assignedAgent        Employee?     @relation("AssignedAgent", fields: [assignedAgentId], references: [id])
+  orders               Order[]
+
+  @@map("customers")
+}
+
+model Order {
+  id          Int         @id @default(autoincrement())
+  customerId  Int         @map("customer_id")
+  agentId     Int         @map("agent_id")
+  orderDate   DateTime    @default(now()) @map("order_date") @db.Timestamptz(3)
+  status      String      @default("Pending") @db.VarChar(50)
+  totalAmount Decimal?    @map("total_amount") @db.Decimal(12, 2)
+  
+  customer    Customer    @relation(fields: [customerId], references: [id])
+  agent       Employee    @relation("AgentOrders", fields: [agentId], references: [id])
+  orderItems  OrderItem[]
+  returns     Return[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+  orderId   Int     @map("order_id")
+  productId Int     @map("product_id")
+  quantity  Int
+  unitPrice Decimal @map("unit_price") @db.Decimal(10, 2)
+  
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+model Return {
+  id         Int      @id @default(autoincrement())
+  orderId    Int      @map("order_id")
+  productId  Int      @map("product_id")
+  quantity   Int
+  reason     String?  @db.Text
+  returnDate DateTime @default(now()) @map("return_date") @db.Timestamptz(3)
+  
+  order      Order    @relation(fields: [orderId], references: [id])
+  product    Product  @relation(fields: [productId], references: [id])
+
+  @@map("returns")
+}
+
+model AgentLocation {
+  id        Int      @id @default(autoincrement())
+  agentId   Int      @map("agent_id")
+  latitude  Float
+  longitude Float
+  timestamp DateTime @default(now()) @db.Timestamptz(3)
+  
+  agent     Employee @relation(fields: [agentId], references: [id])
+
+  @@map("agent_locations")
+}
+
