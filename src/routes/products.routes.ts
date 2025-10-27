@@ -127,6 +127,7 @@ router.post(
     body("nameEnglish").optional().isString(),
     body("productCode").optional().isString(),
     body("supplierId").optional().isInt(),
+    body("categoryId").optional().isInt(),
     body("stockQuantity")
       .optional()
       .isInt()
@@ -264,6 +265,7 @@ router.put(
     body("nameEnglish").optional().isString(),
     body("productCode").optional().isString(),
     body("supplierId").optional().isInt(),
+    body("categoryId").optional().isInt(),
     body("priceWholesale").optional().isDecimal(),
     body("priceRetail").optional().isDecimal(),
   ]),

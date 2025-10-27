@@ -107,6 +107,34 @@ async function main() {
     },
   });
 
+  // Create sample categories
+  console.log("Creating sample categories...");
+  const beverageCategory = await prisma.category.create({
+    data: {
+      nameMongolian: "Ундаа",
+      nameEnglish: "Beverages",
+      description: "All types of beverages and drinks",
+    },
+  });
+
+  const dairyCategory = await prisma.category.create({
+    data: {
+      nameMongolian: "Сүүн бүтээгдэхүүн",
+      nameEnglish: "Dairy Products",
+      description: "Milk and dairy-based products",
+    },
+  });
+
+  const bakeryCategory = await prisma.category.create({
+    data: {
+      nameMongolian: "Нарийн боов",
+      nameEnglish: "Bakery Products",
+      description: "Bread and bakery items",
+    },
+  });
+
+  console.log("Sample categories created successfully");
+
   // Create sample products
   console.log("Creating sample products...");
   await prisma.product.createMany({
@@ -116,6 +144,7 @@ async function main() {
         nameEnglish: "Water",
         productCode: "PROD-001",
         supplierId: supplier.id,
+        categoryId: beverageCategory.id,
         stockQuantity: 100,
         priceWholesale: 500,
         priceRetail: 700,
@@ -125,6 +154,7 @@ async function main() {
         nameEnglish: "Milk",
         productCode: "PROD-002",
         supplierId: supplier.id,
+        categoryId: dairyCategory.id,
         stockQuantity: 50,
         priceWholesale: 1500,
         priceRetail: 2000,
@@ -134,6 +164,7 @@ async function main() {
         nameEnglish: "Bread",
         productCode: "PROD-003",
         supplierId: supplier.id,
+        categoryId: bakeryCategory.id,
         stockQuantity: 75,
         priceWholesale: 800,
         priceRetail: 1000,

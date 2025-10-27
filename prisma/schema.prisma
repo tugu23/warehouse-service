@@ -45,18 +45,31 @@ model Supplier {
   @@map("suppliers")
 }
 
+model Category {
+  id            Int       @id @default(autoincrement())
+  nameMongolian String    @map("name_mongolian") @db.VarChar(255)
+  nameEnglish   String?   @map("name_english") @db.VarChar(255)
+  description   String?   @db.Text
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  products      Product[]
+
+  @@map("categories")
+}
+
 model Product {
   id             Int          @id @default(autoincrement())
   nameMongolian  String       @map("name_mongolian") @db.VarChar(255)
   nameEnglish    String?      @map("name_english") @db.VarChar(255)
   productCode    String?      @unique @map("product_code") @db.VarChar(100)
   supplierId     Int?         @map("supplier_id")
+  categoryId     Int?         @map("category_id")
   stockQuantity  Int          @default(0) @map("stock_quantity")
   priceWholesale Decimal?     @map("price_wholesale") @db.Decimal(10, 2)
   priceRetail    Decimal?     @map("price_retail") @db.Decimal(10, 2)
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   
   supplier       Supplier?    @relation(fields: [supplierId], references: [id])
+  category       Category?    @relation(fields: [categoryId], references: [id])
   orderItems     OrderItem[]
   returns        Return[]
 

@@ -14,6 +14,7 @@ export const createProduct = async (
       nameEnglish,
       productCode,
       supplierId,
+      categoryId,
       stockQuantity,
       priceWholesale,
       priceRetail,
@@ -36,11 +37,15 @@ export const createProduct = async (
         nameEnglish,
         productCode,
         supplierId,
+        categoryId,
         stockQuantity: stockQuantity || 0,
         priceWholesale,
         priceRetail,
       },
-      include: { supplier: true },
+      include: {
+        supplier: true,
+        category: true,
+      },
     });
 
     logger.info(`New product created: ${product.nameMongolian}`);
@@ -80,7 +85,10 @@ export const getAllProducts = async (
         where,
         skip,
         take: limit,
-        include: { supplier: true },
+        include: {
+          supplier: true,
+          category: true,
+        },
         orderBy: { createdAt: "desc" },
       }),
       prisma.product.count({ where }),
@@ -113,7 +121,10 @@ export const getProductById = async (
 
     const product = await prisma.product.findUnique({
       where: { id: parseInt(id) },
-      include: { supplier: true },
+      include: {
+        supplier: true,
+        category: true,
+      },
     });
 
     if (!product) {
@@ -141,6 +152,7 @@ export const updateProduct = async (
       nameEnglish,
       productCode,
       supplierId,
+      categoryId,
       priceWholesale,
       priceRetail,
     } = req.body;
@@ -171,10 +183,14 @@ export const updateProduct = async (
         nameEnglish,
         productCode,
         supplierId,
+        categoryId,
         priceWholesale,
         priceRetail,
       },
-      include: { supplier: true },
+      include: {
+        supplier: true,
+        category: true,
+      },
     });
 
     logger.info(`Product updated: ${updatedProduct.nameMongolian}`);

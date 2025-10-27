@@ -16,6 +16,7 @@ import customersRoutes from "./routes/customers.routes";
 import ordersRoutes from "./routes/orders.routes";
 import returnsRoutes from "./routes/returns.routes";
 import agentsRoutes from "./routes/agents.routes";
+import categoriesRoutes from "./routes/categories.routes";
 
 const app: Application = express();
 
@@ -107,6 +108,7 @@ app.use("/api/customers", customersRoutes);
 app.use("/api/orders", ordersRoutes);
 app.use("/api/returns", returnsRoutes);
 app.use("/api/agents", agentsRoutes);
+app.use("/api/categories", categoriesRoutes);
 
 // 404 handler
 app.use(notFoundHandler);
