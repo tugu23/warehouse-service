@@ -4,6 +4,7 @@ import { AppError } from "../middleware/error.middleware";
 import { AuthRequest } from "../middleware/auth.middleware";
 import logger from "../utils/logger";
 import { Prisma } from "@prisma/client";
+import { addDays } from "date-fns";
 
 export const createOrder = async (
   req: Request,
@@ -12,10 +13,20 @@ export const createOrder = async (
 ): Promise<void> => {
   try {
     const authReq = req as AuthRequest;
-    const { customerId, items } = req.body;
+    const { 
+      customerId, 
+      items, 
+      paymentMethod = "Cash",
+      creditTermDays 
+    } = req.body;
 
     if (!items || items.length === 0) {
       throw new AppError("Order must contain at least one item", 400);
+    }
+
+    // Validate credit terms if payment method is Credit
+    if (paymentMethod === "Credit" && !creditTermDays) {
+      throw new AppError("Credit term days are required for credit payments", 400);
     }
 
     // Use transaction to ensure data consistency
@@ -52,6 +63,61 @@ export const createOrder = async (
           );
         }
 
+        // Get active batches using FIFO logic (oldest first, non-expired)
+        const batches = await tx.productBatch.findMany({
+          where: {
+            productId: item.productId,
+            isActive: true,
+            quantity: {
+              gt: 0,
+            },
+            OR: [
+              { expiryDate: null },
+              { expiryDate: { gt: new Date() } }, // Not expired
+            ],
+          },
+          orderBy: {
+            arrivalDate: "asc", // FIFO - oldest first
+          },
+        });
+
+        // Check if we have enough inventory in non-expired batches
+        const totalBatchQuantity = batches.reduce(
+          (sum, batch) => sum + batch.quantity,
+          0
+        );
+
+        if (totalBatchQuantity < item.quantity) {
+          throw new AppError(
+            `Insufficient non-expired batch inventory for product ${product.nameMongolian}. Available: ${totalBatchQuantity}, Requested: ${item.quantity}`,
+            400
+          );
+        }
+
+        // Allocate quantity from batches using FIFO
+        let remainingQuantity = item.quantity;
+        for (const batch of batches) {
+          if (remainingQuantity <= 0) break;
+
+          const quantityToUse = Math.min(batch.quantity, remainingQuantity);
+
+          // Update batch quantity
+          await tx.productBatch.update({
+            where: { id: batch.id },
+            data: {
+              quantity: {
+                decrement: quantityToUse,
+              },
+            },
+          });
+
+          remainingQuantity -= quantityToUse;
+
+          logger.info(
+            `Allocated ${quantityToUse} units from batch ${batch.batchNumber} (Product: ${product.nameMongolian})`
+          );
+        }
+
         // Determine price based on customer type
         const unitPrice =
           customer.customerTypeId === 2
@@ -76,7 +142,7 @@ export const createOrder = async (
           unitPrice,
         });
 
-        // Decrement stock
+        // Decrement overall product stock
         await tx.product.update({
           where: { id: item.productId },
           data: {
@@ -85,15 +151,66 @@ export const createOrder = async (
             },
           },
         });
+
+        // Update inventory balance for current month
+        const now = new Date();
+        const month = now.getMonth() + 1;
+        const year = now.getFullYear();
+
+        const existingBalance = await tx.inventoryBalance.findUnique({
+          where: {
+            productId_month_year: {
+              productId: item.productId,
+              month,
+              year,
+            },
+          },
+        });
+
+        if (existingBalance) {
+          await tx.inventoryBalance.update({
+            where: {
+              productId_month_year: {
+                productId: item.productId,
+                month,
+                year,
+              },
+            },
+            data: {
+              totalOut: {
+                increment: item.quantity,
+              },
+              closingBalance: {
+                decrement: item.quantity,
+              },
+            },
+          });
+        }
       }
 
-      // Create order
+      // Calculate due date for credit payments
+      let dueDate = null;
+      let paymentStatus: "Paid" | "Pending" = "Pending";
+      
+      if (paymentMethod === "Credit" && creditTermDays) {
+        dueDate = addDays(new Date(), creditTermDays);
+      } else if (paymentMethod === "Cash") {
+        paymentStatus = "Paid";
+      }
+
+      // Create order with payment information
       const newOrder = await tx.order.create({
         data: {
           customerId,
           agentId: authReq.user!.userId,
           totalAmount,
           status: "Pending",
+          paymentMethod,
+          paymentStatus,
+          creditTermDays: creditTermDays || null,
+          dueDate,
+          paidAmount: paymentMethod === "Cash" ? totalAmount : 0,
+          remainingAmount: paymentMethod === "Cash" ? 0 : totalAmount,
           orderItems: {
             create: orderItemsData,
           },
@@ -109,11 +226,23 @@ export const createOrder = async (
         },
       });
 
+      // If cash payment, create payment record
+      if (paymentMethod === "Cash") {
+        await tx.payment.create({
+          data: {
+            orderId: newOrder.id,
+            amount: totalAmount,
+            paymentMethod: "Cash",
+            notes: "Initial cash payment",
+          },
+        });
+      }
+
       return newOrder;
     });
 
     logger.info(
-      `New order created: Order ID ${order.id}, Total: ${order.totalAmount}`
+      `New order created: Order ID ${order.id}, Total: ${order.totalAmount}, Payment: ${paymentMethod}`
     );
 
     res.status(201).json({
@@ -137,6 +266,10 @@ export const getAllOrders = async (
     const skip = (page - 1) * limit;
     const status = req.query.status as string;
     const customerId = req.query.customerId as string;
+    const paymentStatus = req.query.paymentStatus as string;
+    const paymentMethod = req.query.paymentMethod as string;
+    const startDate = req.query.startDate as string;
+    const endDate = req.query.endDate as string;
 
     const where: any = {};
 
@@ -153,6 +286,24 @@ export const getAllOrders = async (
       where.customerId = parseInt(customerId);
     }
 
+    if (paymentStatus) {
+      where.paymentStatus = paymentStatus;
+    }
+
+    if (paymentMethod) {
+      where.paymentMethod = paymentMethod;
+    }
+
+    if (startDate || endDate) {
+      where.orderDate = {};
+      if (startDate) {
+        where.orderDate.gte = new Date(startDate);
+      }
+      if (endDate) {
+        where.orderDate.lte = new Date(endDate);
+      }
+    }
+
     const [orders, total] = await Promise.all([
       prisma.order.findMany({
         where,
@@ -166,6 +317,7 @@ export const getAllOrders = async (
           orderItems: {
             include: { product: true },
           },
+          payments: true,
         },
         orderBy: { orderDate: "desc" },
       }),
@@ -268,6 +420,186 @@ export const updateOrderStatus = async (
     res.json({
       status: "success",
       data: { order: updatedOrder },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getOrderReceipt = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    const order = await prisma.order.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        customer: true,
+        agent: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        orderItems: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                nameMongolian: true,
+                nameEnglish: true,
+                productCode: true,
+              },
+            },
+          },
+        },
+        payments: true,
+      },
+    });
+
+    if (!order) {
+      throw new AppError("Order not found", 404);
+    }
+
+    // Format receipt data for frontend/printing
+    const receiptData = {
+      orderId: order.id,
+      orderDate: order.orderDate,
+      status: order.status,
+      customer: {
+        id: order.customer.id,
+        name: order.customer.name,
+        address: order.customer.address,
+        phoneNumber: order.customer.phoneNumber,
+      },
+      agent: {
+        id: order.agent.id,
+        name: order.agent.name,
+      },
+      items: order.orderItems.map((item) => ({
+        productId: item.product.id,
+        productName: item.product.nameMongolian,
+        productCode: item.product.productCode,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        total: parseFloat(item.unitPrice.toString()) * item.quantity,
+      })),
+      payment: {
+        method: order.paymentMethod,
+        status: order.paymentStatus,
+        totalAmount: order.totalAmount,
+        paidAmount: order.paidAmount,
+        remainingAmount: order.remainingAmount,
+        creditTermDays: order.creditTermDays,
+        dueDate: order.dueDate,
+      },
+      payments: order.payments.map((p) => ({
+        id: p.id,
+        amount: p.amount,
+        method: p.paymentMethod,
+        date: p.paymentDate,
+        notes: p.notes,
+      })),
+    };
+
+    res.json({
+      status: "success",
+      data: { receipt: receiptData },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const prepareOrderDocument = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    const order = await prisma.order.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        customer: true,
+        agent: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phoneNumber: true,
+          },
+        },
+        orderItems: {
+          include: {
+            product: true,
+          },
+        },
+        payments: true,
+      },
+    });
+
+    if (!order) {
+      throw new AppError("Order not found", 404);
+    }
+
+    // Prepare comprehensive document data for printing
+    const documentData = {
+      documentType: "SALES_ORDER",
+      documentNumber: `ORD-${order.id.toString().padStart(6, "0")}`,
+      issueDate: order.orderDate,
+      companyInfo: {
+        name: "Warehouse Management System",
+        address: "Mongolia, Ulaanbaatar",
+        phone: "+976-XXXXXXXX",
+      },
+      customer: {
+        id: order.customer.id,
+        name: order.customer.name,
+        address: order.customer.address || "N/A",
+        phoneNumber: order.customer.phoneNumber || "N/A",
+      },
+      agent: {
+        name: order.agent.name,
+        email: order.agent.email,
+        phone: order.agent.phoneNumber || "N/A",
+      },
+      items: order.orderItems.map((item, index) => ({
+        no: index + 1,
+        productCode: item.product.productCode || "N/A",
+        productName: item.product.nameMongolian,
+        quantity: item.quantity,
+        unit: "ширхэг",
+        unitPrice: parseFloat(item.unitPrice.toString()),
+        total: parseFloat(item.unitPrice.toString()) * item.quantity,
+      })),
+      summary: {
+        subtotal: parseFloat(order.totalAmount?.toString() || "0"),
+        tax: 0,
+        total: parseFloat(order.totalAmount?.toString() || "0"),
+      },
+      payment: {
+        method: order.paymentMethod,
+        status: order.paymentStatus,
+        paidAmount: parseFloat(order.paidAmount?.toString() || "0"),
+        remainingAmount: parseFloat(order.remainingAmount?.toString() || "0"),
+        creditTermDays: order.creditTermDays,
+        dueDate: order.dueDate,
+      },
+      notes: order.paymentMethod === "Credit" 
+        ? `Зээлийн нөхцөл: ${order.creditTermDays} өдөр. Төлбөр төлөх өдөр: ${order.dueDate?.toLocaleDateString("mn-MN")}`
+        : "Бэлэн мөнгөөр төлсөн",
+      printedAt: new Date(),
+    };
+
+    res.json({
+      status: "success",
+      data: { document: documentData },
     });
   } catch (error) {
     next(error);

@@ -5,6 +5,8 @@ import {
   getAllOrders,
   getOrderById,
   updateOrderStatus,
+  getOrderReceipt,
+  prepareOrderDocument,
 } from "../controllers/orders.controller";
 import { authMiddleware, checkRole } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validation.middleware";
@@ -130,6 +132,14 @@ router.post(
     body("items.*.quantity")
       .isInt({ min: 1 })
       .withMessage("Quantity must be at least 1"),
+    body("paymentMethod")
+      .optional()
+      .isIn(["Cash", "Credit", "BankTransfer", "Sales", "Padan"])
+      .withMessage("Invalid payment method"),
+    body("creditTermDays")
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage("Credit term days must be a positive integer"),
   ]),
   createOrder
 );
@@ -268,6 +278,60 @@ router.put(
       .withMessage("Status must be Pending, Fulfilled, or Cancelled"),
   ]),
   updateOrderStatus
+);
+
+/**
+ * @swagger
+ * /api/orders/{id}/receipt:
+ *   get:
+ *     summary: Get order receipt data
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Order ID
+ *     responses:
+ *       200:
+ *         description: Receipt data for order
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ */
+router.get(
+  "/:id/receipt",
+  validate([param("id").isInt().withMessage("Valid order ID is required")]),
+  getOrderReceipt
+);
+
+/**
+ * @swagger
+ * /api/orders/{id}/document:
+ *   get:
+ *     summary: Prepare order document for printing
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Order ID
+ *     responses:
+ *       200:
+ *         description: Document data for printing
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ */
+router.get(
+  "/:id/document",
+  validate([param("id").isInt().withMessage("Valid order ID is required")]),
+  prepareOrderDocument
 );
 
 export default router;

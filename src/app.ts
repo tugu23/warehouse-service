@@ -17,6 +17,11 @@ import ordersRoutes from "./routes/orders.routes";
 import returnsRoutes from "./routes/returns.routes";
 import agentsRoutes from "./routes/agents.routes";
 import categoriesRoutes from "./routes/categories.routes";
+import paymentsRoutes from "./routes/payments.routes";
+import productBatchesRoutes from "./routes/product-batches.routes";
+import deliveryPlansRoutes from "./routes/delivery-plans.routes";
+import reportsRoutes from "./routes/reports.routes";
+import posapiRoutes from "./routes/posapi.routes";
 
 const app: Application = express();
 
@@ -104,11 +109,16 @@ app.use(
 app.use("/api/auth", authRoutes);
 app.use("/api/employees", employeesRoutes);
 app.use("/api/products", productsRoutes);
+app.use("/api/products", productBatchesRoutes); // Product batch routes nested under products
 app.use("/api/customers", customersRoutes);
 app.use("/api/orders", ordersRoutes);
 app.use("/api/returns", returnsRoutes);
 app.use("/api/agents", agentsRoutes);
 app.use("/api/categories", categoriesRoutes);
+app.use("/api/payments", paymentsRoutes);
+app.use("/api/delivery-plans", deliveryPlansRoutes);
+app.use("/api/reports", reportsRoutes);
+app.use("/api/posapi", posapiRoutes);
 
 // 404 handler
 app.use(notFoundHandler);

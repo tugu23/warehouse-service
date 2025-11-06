@@ -19,4 +19,15 @@ export const config = {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || "900000", 10),
     max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || "100", 10),
   },
+  posApi: {
+    url: process.env.POS_API_URL || "http://localhost:8080/api",
+    apiKey: process.env.POS_API_KEY || "",
+    timeout: parseInt(process.env.POS_API_TIMEOUT || "30000", 10),
+    mockMode: process.env.POS_API_MOCK_MODE === "true" || true,
+  },
+  creditPayment: {
+    defaultTermDays: parseInt(process.env.DEFAULT_CREDIT_TERM_DAYS || "30", 10),
+    gracePeriodDays: parseInt(process.env.CREDIT_GRACE_PERIOD_DAYS || "3", 10),
+    maxTermDays: parseInt(process.env.MAX_CREDIT_TERM_DAYS || "90", 10),
+  },
 };

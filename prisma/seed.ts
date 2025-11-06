@@ -174,6 +174,58 @@ async function main() {
 
   console.log("Sample products created successfully");
 
+  // Get created products for batches
+  const products = await prisma.product.findMany();
+
+  // Create sample product batches with expiry dates
+  console.log("Creating sample product batches...");
+  const now = new Date();
+  const futureDate = new Date();
+  futureDate.setMonth(futureDate.getMonth() + 6);
+
+  for (const product of products) {
+    await prisma.productBatch.create({
+      data: {
+        productId: product.id,
+        batchNumber: `BATCH-${product.productCode}-001`,
+        arrivalDate: now,
+        expiryDate: futureDate,
+        quantity: Math.floor(product.stockQuantity / 2),
+        costPrice: product.priceWholesale || product.priceRetail,
+        supplierInvoice: `INV-${product.productCode}-2024-001`,
+        isActive: true,
+      },
+    });
+
+    await prisma.productBatch.create({
+      data: {
+        productId: product.id,
+        batchNumber: `BATCH-${product.productCode}-002`,
+        arrivalDate: now,
+        expiryDate: new Date(futureDate.getTime() + 30 * 24 * 60 * 60 * 1000), // +1 month from first batch
+        quantity: Math.floor(product.stockQuantity / 2),
+        costPrice: product.priceWholesale || product.priceRetail,
+        supplierInvoice: `INV-${product.productCode}-2024-002`,
+        isActive: true,
+      },
+    });
+
+    // Create inventory balance for current month
+    await prisma.inventoryBalance.create({
+      data: {
+        productId: product.id,
+        month: now.getMonth() + 1,
+        year: now.getFullYear(),
+        openingBalance: 0,
+        closingBalance: product.stockQuantity,
+        totalIn: product.stockQuantity,
+        totalOut: 0,
+      },
+    });
+  }
+
+  console.log("Sample product batches and inventory balances created successfully");
+
   console.log("Database seeding completed successfully!");
   console.log("\nDefault users:");
   console.log("Admin: admin@warehouse.com / admin123");
