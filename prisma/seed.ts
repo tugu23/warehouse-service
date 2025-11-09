@@ -142,32 +142,50 @@ async function main() {
       {
         nameMongolian: "Ус",
         nameEnglish: "Water",
+        nameKorean: "물",
         productCode: "PROD-001",
+        barcode: "8801234567890",
         supplierId: supplier.id,
         categoryId: beverageCategory.id,
         stockQuantity: 100,
+        unitsPerBox: 24,
         priceWholesale: 500,
         priceRetail: 700,
+        pricePerBox: 12000,
+        netWeight: 0.5,
+        grossWeight: 0.6,
       },
       {
         nameMongolian: "Сүү",
         nameEnglish: "Milk",
+        nameKorean: "우유",
         productCode: "PROD-002",
+        barcode: "8801234567891",
         supplierId: supplier.id,
         categoryId: dairyCategory.id,
         stockQuantity: 50,
+        unitsPerBox: 12,
         priceWholesale: 1500,
         priceRetail: 2000,
+        pricePerBox: 18000,
+        netWeight: 1.0,
+        grossWeight: 1.1,
       },
       {
         nameMongolian: "Талх",
         nameEnglish: "Bread",
+        nameKorean: "빵",
         productCode: "PROD-003",
+        barcode: "8801234567892",
         supplierId: supplier.id,
         categoryId: bakeryCategory.id,
         stockQuantity: 75,
+        unitsPerBox: 20,
         priceWholesale: 800,
         priceRetail: 1000,
+        pricePerBox: 16000,
+        netWeight: 0.4,
+        grossWeight: 0.45,
       },
     ],
   });
@@ -224,7 +242,117 @@ async function main() {
     });
   }
 
-  console.log("Sample product batches and inventory balances created successfully");
+  console.log(
+    "Sample product batches and inventory balances created successfully"
+  );
+
+  // Get the sales agent for customer assignment
+  const salesAgent = await prisma.employee.findFirst({
+    where: { email: "agent@warehouse.com" },
+  });
+
+  // Create sample customers
+  console.log("Creating sample customers...");
+  await prisma.customer.createMany({
+    data: [
+      {
+        name: "Хаан банк дэлгүүр",
+        organizationName: "Хаан Банк ХХК",
+        organizationType: "Дэлгүүр",
+        contactPersonName: "Болд",
+        registrationNumber: "1234567890",
+        address: "Сүхбаатар дүүрэг, 1-р хороо",
+        district: "Сүхбаатар",
+        detailedAddress: "Энхтайвны өргөн чөлөө 12",
+        phoneNumber: "+976-99001122",
+        isVatPayer: true,
+        paymentTerms: "Зээл - 30 хоног",
+        locationLatitude: 47.9189,
+        locationLongitude: 106.9174,
+        customerTypeId: wholesaleType.id,
+        assignedAgentId: salesAgent?.id,
+      },
+      {
+        name: "Номин дэлгүүр",
+        organizationName: "Номин Холдинг ХХК",
+        organizationType: "Сүлжээ",
+        contactPersonName: "Дорж",
+        registrationNumber: "0987654321",
+        address: "Чингэлтэй дүүрэг, 5-р хороо",
+        district: "Чингэлтэй",
+        detailedAddress: "Барилгачдын талбай 1",
+        phoneNumber: "+976-88112233",
+        isVatPayer: true,
+        paymentTerms: "Бэлэн",
+        locationLatitude: 47.9242,
+        locationLongitude: 106.9208,
+        customerTypeId: wholesaleType.id,
+        assignedAgentId: salesAgent?.id,
+      },
+      {
+        name: "Хүнсний дэлгүүр",
+        organizationName: "Хүнсний дэлгүүр",
+        organizationType: "Дэлгүүр",
+        contactPersonName: "Сарна",
+        registrationNumber: "5555666677",
+        address: "Баянзүрх дүүрэг, 3-р хороо",
+        district: "Баянзүрх",
+        detailedAddress: "16-р хороолол, 35-р байр",
+        phoneNumber: "+976-99334455",
+        isVatPayer: false,
+        paymentTerms: "Бэлэн",
+        locationLatitude: 47.9088,
+        locationLongitude: 106.9527,
+        customerTypeId: retailType.id,
+        assignedAgentId: salesAgent?.id,
+      },
+      {
+        name: "Хаан ресторан",
+        organizationName: "Хаан Ресторан ХХК",
+        organizationType: "Ресторан",
+        contactPersonName: "Энхболд",
+        registrationNumber: "2222333344",
+        address: "Хан-Уул дүүрэг, 2-р хороо",
+        district: "Хан-Уул",
+        detailedAddress: "Яармагийн зам 7",
+        phoneNumber: "+976-77445566",
+        isVatPayer: true,
+        paymentTerms: "Данс",
+        locationLatitude: 47.8897,
+        locationLongitude: 106.9319,
+        customerTypeId: retailType.id,
+        assignedAgentId: salesAgent?.id,
+      },
+    ],
+  });
+
+  console.log("Sample customers created successfully");
+
+  // Create sample delivery plans
+  console.log("Creating sample delivery plans...");
+  const customers = await prisma.customer.findMany();
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(10, 0, 0, 0);
+
+  for (let i = 0; i < customers.length; i++) {
+    const customer = customers[i];
+    await prisma.deliveryPlan.create({
+      data: {
+        planDate: tomorrow,
+        agentId: salesAgent!.id,
+        customerId: customer.id,
+        scheduledTime: new Date(tomorrow.getTime() + i * 60 * 60 * 1000), // Each customer 1 hour apart
+        status: "Planned",
+        description: `${customer.district} дүүргийн хүргэлтийн төлөвлөгөө`,
+        targetArea: customer.district || "Улаанбаатар",
+        estimatedOrders: Math.floor(Math.random() * 5) + 1,
+        deliveryNotes: `Харилцагч: ${customer.name}`,
+      },
+    });
+  }
+
+  console.log("Sample delivery plans created successfully");
 
   console.log("Database seeding completed successfully!");
   console.log("\nDefault users:");

@@ -12,8 +12,16 @@ export const createCustomer = async (
   try {
     const {
       name,
+      organizationName,
+      organizationType,
+      contactPersonName,
+      registrationNumber,
       address,
+      district,
+      detailedAddress,
       phoneNumber,
+      isVatPayer,
+      paymentTerms,
       locationLatitude,
       locationLongitude,
       customerTypeId,
@@ -23,8 +31,16 @@ export const createCustomer = async (
     const customer = await prisma.customer.create({
       data: {
         name,
+        organizationName,
+        organizationType,
+        contactPersonName,
+        registrationNumber,
         address,
+        district,
+        detailedAddress,
         phoneNumber,
+        isVatPayer: isVatPayer || false,
+        paymentTerms,
         locationLatitude,
         locationLongitude,
         customerTypeId,
@@ -59,12 +75,44 @@ export const getAllCustomers = async (
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const skip = (page - 1) * limit;
+    const district = req.query.district as string;
+    const registrationNumber = req.query.registrationNumber as string;
+    const isVatPayer = req.query.isVatPayer as string;
+    const search = req.query.search as string;
 
     const where: any = {};
 
     // Sales agents can only see their assigned customers
     if (authReq.user?.role === "SalesAgent") {
       where.assignedAgentId = authReq.user.userId;
+    }
+
+    // Filter by district
+    if (district) {
+      where.district = district;
+    }
+
+    // Filter by registration number
+    if (registrationNumber) {
+      where.registrationNumber = {
+        contains: registrationNumber,
+        mode: "insensitive",
+      };
+    }
+
+    // Filter by VAT payer status
+    if (isVatPayer !== undefined) {
+      where.isVatPayer = isVatPayer === "true";
+    }
+
+    // General search
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: "insensitive" } },
+        { organizationName: { contains: search, mode: "insensitive" } },
+        { registrationNumber: { contains: search, mode: "insensitive" } },
+        { phoneNumber: { contains: search, mode: "insensitive" } },
+      ];
     }
 
     const [customers, total] = await Promise.all([
@@ -149,8 +197,16 @@ export const updateCustomer = async (
     const { id } = req.params;
     const {
       name,
+      organizationName,
+      organizationType,
+      contactPersonName,
+      registrationNumber,
       address,
+      district,
+      detailedAddress,
       phoneNumber,
+      isVatPayer,
+      paymentTerms,
       locationLatitude,
       locationLongitude,
       customerTypeId,
@@ -169,8 +225,16 @@ export const updateCustomer = async (
       where: { id: parseInt(id) },
       data: {
         name,
+        organizationName,
+        organizationType,
+        contactPersonName,
+        registrationNumber,
         address,
+        district,
+        detailedAddress,
         phoneNumber,
+        isVatPayer,
+        paymentTerms,
         locationLatitude,
         locationLongitude,
         customerTypeId,

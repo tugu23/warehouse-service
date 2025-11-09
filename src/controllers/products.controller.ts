@@ -12,12 +12,18 @@ export const createProduct = async (
     const {
       nameMongolian,
       nameEnglish,
+      nameKorean,
       productCode,
+      barcode,
       supplierId,
       categoryId,
       stockQuantity,
+      unitsPerBox,
       priceWholesale,
       priceRetail,
+      pricePerBox,
+      netWeight,
+      grossWeight,
     } = req.body;
 
     // Check if product code already exists
@@ -31,16 +37,33 @@ export const createProduct = async (
       }
     }
 
+    // Check if barcode already exists
+    if (barcode) {
+      const existingBarcode = await prisma.product.findUnique({
+        where: { barcode },
+      });
+
+      if (existingBarcode) {
+        throw new AppError("Product with this barcode already exists", 400);
+      }
+    }
+
     const product = await prisma.product.create({
       data: {
         nameMongolian,
         nameEnglish,
+        nameKorean,
         productCode,
+        barcode,
         supplierId,
         categoryId,
         stockQuantity: stockQuantity || 0,
+        unitsPerBox,
         priceWholesale,
         priceRetail,
+        pricePerBox,
+        netWeight,
+        grossWeight,
       },
       include: {
         supplier: true,
@@ -76,7 +99,9 @@ export const getAllProducts = async (
       where.OR = [
         { nameMongolian: { contains: search, mode: "insensitive" } },
         { nameEnglish: { contains: search, mode: "insensitive" } },
+        { nameKorean: { contains: search, mode: "insensitive" } },
         { productCode: { contains: search, mode: "insensitive" } },
+        { barcode: { contains: search, mode: "insensitive" } },
       ];
     }
 
@@ -150,11 +175,17 @@ export const updateProduct = async (
     const {
       nameMongolian,
       nameEnglish,
+      nameKorean,
       productCode,
+      barcode,
       supplierId,
       categoryId,
+      unitsPerBox,
       priceWholesale,
       priceRetail,
+      pricePerBox,
+      netWeight,
+      grossWeight,
     } = req.body;
 
     const product = await prisma.product.findUnique({
@@ -176,16 +207,33 @@ export const updateProduct = async (
       }
     }
 
+    // Check if new barcode already exists
+    if (barcode && barcode !== product.barcode) {
+      const existingBarcode = await prisma.product.findUnique({
+        where: { barcode },
+      });
+
+      if (existingBarcode) {
+        throw new AppError("Product with this barcode already exists", 400);
+      }
+    }
+
     const updatedProduct = await prisma.product.update({
       where: { id: parseInt(id) },
       data: {
         nameMongolian,
         nameEnglish,
+        nameKorean,
         productCode,
+        barcode,
         supplierId,
         categoryId,
+        unitsPerBox,
         priceWholesale,
         priceRetail,
+        pricePerBox,
+        netWeight,
+        grossWeight,
       },
       include: {
         supplier: true,
@@ -245,6 +293,48 @@ export const adjustInventory = async (
         newQuantity,
         adjustment,
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getProductByBarcode = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { barcode } = req.params;
+
+    const product = await prisma.product.findUnique({
+      where: { barcode },
+      include: {
+        supplier: true,
+        category: true,
+        batches: {
+          where: {
+            isActive: true,
+            quantity: {
+              gt: 0,
+            },
+          },
+          orderBy: {
+            expiryDate: "asc",
+          },
+        },
+      },
+    });
+
+    if (!product) {
+      throw new AppError("Product with this barcode not found", 404);
+    }
+
+    logger.info(`Product scanned by barcode: ${barcode}`);
+
+    res.json({
+      status: "success",
+      data: { product },
     });
   } catch (error) {
     next(error);

@@ -83,12 +83,18 @@ model Product {
   id             Int          @id @default(autoincrement())
   nameMongolian  String       @map("name_mongolian") @db.VarChar(255)
   nameEnglish    String?      @map("name_english") @db.VarChar(255)
+  nameKorean     String?      @map("name_korean") @db.VarChar(255)
   productCode    String?      @unique @map("product_code") @db.VarChar(100)
+  barcode        String?      @unique @db.VarChar(100)
   supplierId     Int?         @map("supplier_id")
   categoryId     Int?         @map("category_id")
   stockQuantity  Int          @default(0) @map("stock_quantity")
+  unitsPerBox    Int?         @map("units_per_box")
   priceWholesale Decimal?     @map("price_wholesale") @db.Decimal(10, 2)
   priceRetail    Decimal?     @map("price_retail") @db.Decimal(10, 2)
+  pricePerBox    Decimal?     @map("price_per_box") @db.Decimal(10, 2)
+  netWeight      Decimal?     @map("net_weight") @db.Decimal(10, 3)
+  grossWeight    Decimal?     @map("gross_weight") @db.Decimal(10, 3)
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   
   supplier       Supplier?    @relation(fields: [supplierId], references: [id])
@@ -112,8 +118,16 @@ model CustomerType {
 model Customer {
   id                   Int           @id @default(autoincrement())
   name                 String        @db.VarChar(255)
+  organizationName     String?       @map("organization_name") @db.VarChar(255)
+  organizationType     String?       @map("organization_type") @db.VarChar(100)
+  contactPersonName    String?       @map("contact_person_name") @db.VarChar(255)
+  registrationNumber   String?       @map("registration_number") @db.VarChar(100)
   address              String?       @db.Text
+  district             String?       @db.VarChar(100)
+  detailedAddress      String?       @map("detailed_address") @db.Text
   phoneNumber          String?       @map("phone_number") @db.VarChar(50)
+  isVatPayer           Boolean       @default(false) @map("is_vat_payer")
+  paymentTerms         String?       @map("payment_terms") @db.VarChar(100)
   locationLatitude     Float?        @map("location_latitude")
   locationLongitude    Float?        @map("location_longitude")
   customerTypeId       Int?          @map("customer_type_id")
@@ -247,6 +261,9 @@ model DeliveryPlan {
   orderId             Int?           @map("order_id")
   scheduledTime       DateTime?      @map("scheduled_time") @db.Timestamptz(3)
   status              DeliveryStatus @default(Planned)
+  description         String?        @db.Text
+  targetArea          String?        @map("target_area") @db.VarChar(255)
+  estimatedOrders     Int?           @map("estimated_orders")
   deliveryNotes       String?        @map("delivery_notes") @db.Text
   actualDeliveryTime  DateTime?      @map("actual_delivery_time") @db.Timestamptz(3)
   createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)

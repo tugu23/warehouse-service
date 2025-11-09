@@ -17,6 +17,9 @@ export const createDeliveryPlan = async (
       customerId,
       orderId,
       scheduledTime,
+      description,
+      targetArea,
+      estimatedOrders,
       deliveryNotes,
     } = req.body;
 
@@ -57,6 +60,9 @@ export const createDeliveryPlan = async (
         orderId: orderId || null,
         scheduledTime: scheduledTime ? new Date(scheduledTime) : null,
         status: "Planned",
+        description: description || null,
+        targetArea: targetArea || null,
+        estimatedOrders: estimatedOrders || null,
         deliveryNotes: deliveryNotes || null,
       },
       include: {
@@ -236,7 +242,15 @@ export const updateDeliveryPlan = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const { planDate, scheduledTime, deliveryNotes, orderId } = req.body;
+    const {
+      planDate,
+      scheduledTime,
+      description,
+      targetArea,
+      estimatedOrders,
+      deliveryNotes,
+      orderId,
+    } = req.body;
 
     const plan = await prisma.deliveryPlan.findUnique({
       where: { id: parseInt(id) },
@@ -254,6 +268,18 @@ export const updateDeliveryPlan = async (
 
     if (scheduledTime !== undefined) {
       updateData.scheduledTime = scheduledTime ? new Date(scheduledTime) : null;
+    }
+
+    if (description !== undefined) {
+      updateData.description = description;
+    }
+
+    if (targetArea !== undefined) {
+      updateData.targetArea = targetArea;
+    }
+
+    if (estimatedOrders !== undefined) {
+      updateData.estimatedOrders = estimatedOrders;
     }
 
     if (deliveryNotes !== undefined) {
