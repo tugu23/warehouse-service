@@ -22,6 +22,8 @@ import productBatchesRoutes from "./routes/product-batches.routes";
 import deliveryPlansRoutes from "./routes/delivery-plans.routes";
 import reportsRoutes from "./routes/reports.routes";
 import posapiRoutes from "./routes/posapi.routes";
+import storesRoutes from "./routes/stores.routes";
+import analyticsRoutes from "./routes/analytics.routes";
 
 const app: Application = express();
 
@@ -119,6 +121,8 @@ app.use("/api/payments", paymentsRoutes);
 app.use("/api/delivery-plans", deliveryPlansRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/posapi", posapiRoutes);
+app.use("/api/stores", storesRoutes);
+app.use("/api/analytics", analyticsRoutes);
 
 // 404 handler
 app.use(notFoundHandler);

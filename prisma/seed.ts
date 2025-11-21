@@ -24,7 +24,49 @@ async function main() {
     create: { name: "SalesAgent" },
   });
 
+  const marketSalespersonRole = await prisma.role.upsert({
+    where: { name: "MarketSalesperson" },
+    update: {},
+    create: { name: "MarketSalesperson" },
+  });
+
+  const storeSalespersonRole = await prisma.role.upsert({
+    where: { name: "StoreSalesperson" },
+    update: {},
+    create: { name: "StoreSalesperson" },
+  });
+
   console.log("Roles created successfully");
+
+  // Create stores
+  console.log("Creating stores...");
+  const centralMarket = await prisma.store.upsert({
+    where: { id: 1 },
+    update: {},
+    create: {
+      name: "Central Wholesale Market",
+      address: "Ulaanbaatar, Mongolia",
+      storeType: "Market",
+      locationLatitude: 47.918869,
+      locationLongitude: 106.917580,
+      isActive: true,
+    },
+  });
+
+  const retailStore1 = await prisma.store.upsert({
+    where: { id: 2 },
+    update: {},
+    create: {
+      name: "Downtown Retail Store",
+      address: "Peace Avenue, Ulaanbaatar",
+      storeType: "Store",
+      locationLatitude: 47.922178,
+      locationLongitude: 106.918556,
+      isActive: true,
+    },
+  });
+
+  console.log("Stores created successfully");
 
   // Create admin user
   console.log("Creating admin user...");
@@ -70,6 +112,40 @@ async function main() {
       phoneNumber: "+976-77777777",
       passwordHash: agentPassword,
       roleId: salesAgentRole.id,
+      isActive: true,
+    },
+  });
+
+  // Create market salesperson
+  console.log("Creating market salesperson...");
+  const marketSalesPassword = await bcrypt.hash("market123", 10);
+  await prisma.employee.upsert({
+    where: { email: "market@warehouse.com" },
+    update: {},
+    create: {
+      name: "Market Salesperson",
+      email: "market@warehouse.com",
+      phoneNumber: "+976-66666666",
+      passwordHash: marketSalesPassword,
+      roleId: marketSalespersonRole.id,
+      storeId: centralMarket.id,
+      isActive: true,
+    },
+  });
+
+  // Create store salesperson
+  console.log("Creating store salesperson...");
+  const storeSalesPassword = await bcrypt.hash("store123", 10);
+  await prisma.employee.upsert({
+    where: { email: "store@warehouse.com" },
+    update: {},
+    create: {
+      name: "Store Salesperson",
+      email: "store@warehouse.com",
+      phoneNumber: "+976-55555555",
+      passwordHash: storeSalesPassword,
+      roleId: storeSalespersonRole.id,
+      storeId: retailStore1.id,
       isActive: true,
     },
   });

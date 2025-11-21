@@ -4,7 +4,8 @@ import { AppError } from "../middleware/error.middleware";
 import { AuthRequest } from "../middleware/auth.middleware";
 import logger from "../utils/logger";
 import { Prisma } from "@prisma/client";
-import { addDays } from "date-fns";
+import { addDays, isBefore, startOfDay } from "date-fns";
+import vatService from "../services/vat.service";
 
 export const createOrder = async (
   req: Request,
@@ -17,7 +18,9 @@ export const createOrder = async (
       customerId, 
       items, 
       paymentMethod = "Cash",
-      creditTermDays 
+      creditTermDays,
+      orderType = "Store", // Default to Store
+      deliveryDate 
     } = req.body;
 
     if (!items || items.length === 0) {
@@ -27,6 +30,27 @@ export const createOrder = async (
     // Validate credit terms if payment method is Credit
     if (paymentMethod === "Credit" && !creditTermDays) {
       throw new AppError("Credit term days are required for credit payments", 400);
+    }
+
+    // Validate orderType
+    if (!["Market", "Store"].includes(orderType)) {
+      throw new AppError("Order type must be Market or Store", 400);
+    }
+
+    // Market order validation: must have future delivery date
+    if (orderType === "Market") {
+      if (!deliveryDate) {
+        throw new AppError("Market orders require a delivery date", 400);
+      }
+      const deliveryDateObj = startOfDay(new Date(deliveryDate));
+      const today = startOfDay(new Date());
+      
+      if (!isBefore(today, deliveryDateObj)) {
+        throw new AppError(
+          "Market orders must have a delivery date in the future (next day or later)",
+          400
+        );
+      }
     }
 
     // Use transaction to ensure data consistency
@@ -41,7 +65,7 @@ export const createOrder = async (
       }
 
       // Validate stock availability and calculate total
-      let totalAmount = new Prisma.Decimal(0);
+      let subtotalAmount = new Prisma.Decimal(0);
       const orderItemsData = [];
 
       for (const item of items) {
@@ -134,7 +158,7 @@ export const createOrder = async (
         const itemTotal = new Prisma.Decimal(unitPrice.toString()).mul(
           item.quantity
         );
-        totalAmount = totalAmount.add(itemTotal);
+        subtotalAmount = subtotalAmount.add(itemTotal);
 
         orderItemsData.push({
           productId: item.productId,
@@ -188,6 +212,16 @@ export const createOrder = async (
         }
       }
 
+      // Calculate VAT for Store orders (10%)
+      let vatAmount = new Prisma.Decimal(0);
+      let totalAmount = subtotalAmount;
+
+      if (orderType === "Store") {
+        const vatCalc = vatService.addVAT(subtotalAmount);
+        vatAmount = vatCalc.vat;
+        totalAmount = vatCalc.total;
+      }
+
       // Calculate due date for credit payments
       let dueDate = null;
       let paymentStatus: "Paid" | "Pending" = "Pending";
@@ -203,6 +237,10 @@ export const createOrder = async (
         data: {
           customerId,
           agentId: authReq.user!.userId,
+          orderType,
+          deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
+          subtotalAmount,
+          vatAmount,
           totalAmount,
           status: "Pending",
           paymentMethod,
@@ -242,7 +280,7 @@ export const createOrder = async (
     });
 
     logger.info(
-      `New order created: Order ID ${order.id}, Total: ${order.totalAmount}, Payment: ${paymentMethod}`
+      `New ${order.orderType} order created: Order ID ${order.id}, Subtotal: ${order.subtotalAmount}, VAT: ${order.vatAmount}, Total: ${order.totalAmount}, Payment: ${paymentMethod}`
     );
 
     res.status(201).json({
@@ -268,6 +306,7 @@ export const getAllOrders = async (
     const customerId = req.query.customerId as string;
     const paymentStatus = req.query.paymentStatus as string;
     const paymentMethod = req.query.paymentMethod as string;
+    const orderType = req.query.orderType as string;
     const startDate = req.query.startDate as string;
     const endDate = req.query.endDate as string;
 
@@ -292,6 +331,10 @@ export const getAllOrders = async (
 
     if (paymentMethod) {
       where.paymentMethod = paymentMethod;
+    }
+
+    if (orderType) {
+      where.orderType = orderType;
     }
 
     if (startDate || endDate) {
@@ -579,8 +622,8 @@ export const prepareOrderDocument = async (
         total: parseFloat(item.unitPrice.toString()) * item.quantity,
       })),
       summary: {
-        subtotal: parseFloat(order.totalAmount?.toString() || "0"),
-        tax: 0,
+        subtotal: parseFloat(order.subtotalAmount?.toString() || order.totalAmount?.toString() || "0"),
+        tax: parseFloat(order.vatAmount?.toString() || "0"),
         total: parseFloat(order.totalAmount?.toString() || "0"),
       },
       payment: {
@@ -601,6 +644,32 @@ export const prepareOrderDocument = async (
       status: "success",
       data: { document: documentData },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getMarketOrders = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    req.query.orderType = "Market";
+    await getAllOrders(req, res, next);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getStoreOrders = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    req.query.orderType = "Store";
+    await getAllOrders(req, res, next);
   } catch (error) {
     next(error);
   }

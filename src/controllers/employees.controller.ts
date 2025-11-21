@@ -10,7 +10,7 @@ export const createEmployee = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { name, email, phoneNumber, password, roleName } = req.body;
+    const { name, email, phoneNumber, password, roleName, storeId } = req.body;
 
     // Check if email already exists
     const existingEmployee = await prisma.employee.findUnique({
@@ -30,6 +30,21 @@ export const createEmployee = async (
       throw new AppError("Invalid role specified", 400);
     }
 
+    // Validate store if provided
+    if (storeId) {
+      const store = await prisma.store.findUnique({
+        where: { id: storeId },
+      });
+
+      if (!store) {
+        throw new AppError("Invalid store specified", 400);
+      }
+
+      if (!store.isActive) {
+        throw new AppError("Cannot assign employee to inactive store", 400);
+      }
+    }
+
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
@@ -41,11 +56,15 @@ export const createEmployee = async (
         phoneNumber,
         passwordHash,
         roleId: role.id,
+        storeId: storeId || null,
       },
-      include: { role: true },
+      include: { 
+        role: true,
+        store: true,
+      },
     });
 
-    logger.info(`New employee created: ${employee.email}`);
+    logger.info(`New employee created: ${employee.email}${employee.storeId ? ` assigned to store ${employee.storeId}` : ''}`);
 
     res.status(201).json({
       status: "success",
@@ -56,6 +75,11 @@ export const createEmployee = async (
           email: employee.email,
           phoneNumber: employee.phoneNumber,
           role: employee.role.name,
+          store: employee.store ? {
+            id: employee.store.id,
+            name: employee.store.name,
+            storeType: employee.store.storeType,
+          } : null,
           isActive: employee.isActive,
           createdAt: employee.createdAt,
         },

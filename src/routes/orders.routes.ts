@@ -7,6 +7,8 @@ import {
   updateOrderStatus,
   getOrderReceipt,
   prepareOrderDocument,
+  getMarketOrders,
+  getStoreOrders,
 } from "../controllers/orders.controller";
 import { authMiddleware, checkRole } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validation.middleware";
@@ -132,6 +134,14 @@ router.post(
     body("items.*.quantity")
       .isInt({ min: 1 })
       .withMessage("Quantity must be at least 1"),
+    body("orderType")
+      .optional()
+      .isIn(["Market", "Store"])
+      .withMessage("Order type must be Market or Store"),
+    body("deliveryDate")
+      .optional()
+      .isISO8601()
+      .withMessage("Delivery date must be a valid date"),
     body("paymentMethod")
       .optional()
       .isIn(["Cash", "Credit", "BankTransfer", "Sales", "Padan"])
@@ -333,5 +343,39 @@ router.get(
   validate([param("id").isInt().withMessage("Valid order ID is required")]),
   prepareOrderDocument
 );
+
+/**
+ * @swagger
+ * /api/orders/market:
+ *   get:
+ *     summary: Get all market orders
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Get all market orders (day-ahead wholesale orders)
+ *     responses:
+ *       200:
+ *         description: List of market orders
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
+router.get("/market", getMarketOrders);
+
+/**
+ * @swagger
+ * /api/orders/store:
+ *   get:
+ *     summary: Get all store orders
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Get all store orders (immediate retail orders with VAT)
+ *     responses:
+ *       200:
+ *         description: List of store orders
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
+router.get("/store", getStoreOrders);
 
 export default router;

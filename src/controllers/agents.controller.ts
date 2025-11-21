@@ -61,14 +61,17 @@ export const getAgentRoute = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, excludeMarket } = req.query;
 
     const agentId = parseInt(id);
 
     // Verify agent exists
     const agent = await prisma.employee.findUnique({
       where: { id: agentId },
-      include: { role: true },
+      include: { 
+        role: true,
+        store: true,
+      },
     });
 
     if (!agent) {
@@ -87,10 +90,29 @@ export const getAgentRoute = async (
       }
     }
 
-    const locations = await prisma.agentLocation.findMany({
+    let locations = await prisma.agentLocation.findMany({
       where,
       orderBy: { timestamp: "asc" },
     });
+
+    // Filter out market locations if requested
+    if (excludeMarket === "true" && agent.store) {
+      if (agent.store.storeType === "Market") {
+        // If agent is assigned to a market, filter out locations near that market
+        const marketLat = agent.store.locationLatitude;
+        const marketLng = agent.store.locationLongitude;
+        
+        if (marketLat && marketLng) {
+          // Filter out locations within ~200m of the market (approximately 0.002 degrees)
+          const threshold = 0.002;
+          locations = locations.filter((loc) => {
+            const latDiff = Math.abs(loc.latitude - marketLat);
+            const lngDiff = Math.abs(loc.longitude - marketLng);
+            return latDiff > threshold || lngDiff > threshold;
+          });
+        }
+      }
+    }
 
     res.json({
       status: "success",
@@ -100,9 +122,15 @@ export const getAgentRoute = async (
           name: agent.name,
           email: agent.email,
           role: agent.role.name,
+          store: agent.store ? {
+            id: agent.store.id,
+            name: agent.store.name,
+            storeType: agent.store.storeType,
+          } : null,
         },
         route: locations,
         totalPoints: locations.length,
+        filtered: excludeMarket === "true",
       },
     });
   } catch (error) {
