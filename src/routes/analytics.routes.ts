@@ -6,6 +6,7 @@ import {
   calculateProductSalesAnalytics,
   calculateAllProductsAnalytics,
   getProductSalesAnalytics,
+  getAllProductsSalesAnalytics,
   generateInventoryForecast,
   generateAllProductsForecasts,
   getInventoryForecasts,
@@ -102,6 +103,35 @@ router.post(
     body("year").optional().isInt({ min: 2020, max: 2100 }),
   ]),
   calculateAllProductsAnalytics
+);
+
+/**
+ * @swagger
+ * /api/analytics/products/all:
+ *   get:
+ *     summary: Get sales analytics for all products
+ *     tags: [Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: months
+ *         schema:
+ *           type: integer
+ *           default: 6
+ *     responses:
+ *       200:
+ *         description: Sales analytics for all products
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+  "/products/all",
+  checkRole(["Admin", "Manager"]),
+  validate([
+    query("months").optional().isInt({ min: 1, max: 24 }),
+  ]),
+  getAllProductsSalesAnalytics
 );
 
 /**

@@ -114,6 +114,99 @@ export const calculateAllProductsAnalytics = async (
   }
 };
 
+export const getAllProductsSalesAnalytics = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const months = parseInt(req.query.months as string) || 6;
+
+    // Calculate the date range for filtering
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1; // 1-12
+    
+    // Calculate the cutoff date (months ago)
+    const cutoffDate = new Date(currentDate);
+    cutoffDate.setMonth(cutoffDate.getMonth() - months);
+    const cutoffYear = cutoffDate.getFullYear();
+    const cutoffMonth = cutoffDate.getMonth() + 1; // 1-12
+
+    // Fetch all analytics data within the date range
+    const analytics = await prisma.productSalesAnalytics.findMany({
+      where: {
+        OR: [
+          { year: { gt: cutoffYear } },
+          {
+            AND: [
+              { year: cutoffYear },
+              { month: { gte: cutoffMonth } }
+            ]
+          }
+        ]
+      },
+      include: {
+        product: {
+          select: {
+            id: true,
+            nameMongolian: true,
+            nameEnglish: true,
+            productCode: true,
+            stockQuantity: true,
+          },
+        },
+      },
+      orderBy: [{ year: "desc" }, { month: "desc" }],
+    });
+
+    // Group analytics by product
+    const productMap = new Map();
+    
+    for (const record of analytics) {
+      const productId = record.productId;
+      if (!productMap.has(productId)) {
+        productMap.set(productId, {
+          product: record.product,
+          analytics: [],
+        });
+      }
+      productMap.get(productId).analytics.push({
+        id: record.id,
+        productId: record.productId,
+        month: record.month,
+        year: record.year,
+        quantitySold: record.quantitySold,
+        averageMonthlySales: record.averageMonthlySales,
+        threeMonthAverage: record.threeMonthAverage,
+        sixMonthAverage: record.sixMonthAverage,
+        isOutlier: record.isOutlier,
+        outlierReason: record.outlierReason,
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+      });
+    }
+
+    // Convert map to array and reverse analytics for each product (oldest first)
+    const results = Array.from(productMap.values()).map(item => ({
+      product: item.product,
+      analytics: item.analytics.reverse(),
+      count: item.analytics.length,
+    }));
+
+    res.json({
+      status: "success",
+      data: {
+        products: results,
+        totalProducts: results.length,
+        months: months,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getProductSalesAnalytics = async (
   req: Request,
   res: Response,

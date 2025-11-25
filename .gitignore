@@ -17,3 +17,6 @@ yarn-error.log*
 coverage/
 *.lcov
 
+# Prisma data files (migration/seed data)
+prisma/parsed-data/
+
