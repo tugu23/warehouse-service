@@ -6,6 +6,7 @@ import logger from "../utils/logger";
 import { Prisma } from "@prisma/client";
 import { addDays, isBefore, startOfDay } from "date-fns";
 import vatService from "../services/vat.service";
+import pdfService from "../services/pdf.service";
 
 export const createOrder = async (
   req: Request,
@@ -14,13 +15,13 @@ export const createOrder = async (
 ): Promise<void> => {
   try {
     const authReq = req as AuthRequest;
-    const { 
-      customerId, 
-      items, 
+    const {
+      customerId,
+      items,
       paymentMethod = "Cash",
       creditTermDays,
       orderType = "Store", // Default to Store
-      deliveryDate 
+      deliveryDate,
     } = req.body;
 
     if (!items || items.length === 0) {
@@ -29,7 +30,10 @@ export const createOrder = async (
 
     // Validate credit terms if payment method is Credit
     if (paymentMethod === "Credit" && !creditTermDays) {
-      throw new AppError("Credit term days are required for credit payments", 400);
+      throw new AppError(
+        "Credit term days are required for credit payments",
+        400
+      );
     }
 
     // Validate orderType
@@ -44,7 +48,7 @@ export const createOrder = async (
       }
       const deliveryDateObj = startOfDay(new Date(deliveryDate));
       const today = startOfDay(new Date());
-      
+
       if (!isBefore(today, deliveryDateObj)) {
         throw new AppError(
           "Market orders must have a delivery date in the future (next day or later)",
@@ -225,7 +229,7 @@ export const createOrder = async (
       // Calculate due date for credit payments
       let dueDate = null;
       let paymentStatus: "Paid" | "Pending" = "Pending";
-      
+
       if (paymentMethod === "Credit" && creditTermDays) {
         dueDate = addDays(new Date(), creditTermDays);
       } else if (paymentMethod === "Cash") {
@@ -622,7 +626,11 @@ export const prepareOrderDocument = async (
         total: parseFloat(item.unitPrice.toString()) * item.quantity,
       })),
       summary: {
-        subtotal: parseFloat(order.subtotalAmount?.toString() || order.totalAmount?.toString() || "0"),
+        subtotal: parseFloat(
+          order.subtotalAmount?.toString() ||
+            order.totalAmount?.toString() ||
+            "0"
+        ),
         tax: parseFloat(order.vatAmount?.toString() || "0"),
         total: parseFloat(order.totalAmount?.toString() || "0"),
       },
@@ -634,9 +642,14 @@ export const prepareOrderDocument = async (
         creditTermDays: order.creditTermDays,
         dueDate: order.dueDate,
       },
-      notes: order.paymentMethod === "Credit" 
-        ? `Зээлийн нөхцөл: ${order.creditTermDays} өдөр. Төлбөр төлөх өдөр: ${order.dueDate?.toLocaleDateString("mn-MN")}`
-        : "Бэлэн мөнгөөр төлсөн",
+      notes:
+        order.paymentMethod === "Credit"
+          ? `Зээлийн нөхцөл: ${
+              order.creditTermDays
+            } өдөр. Төлбөр төлөх өдөр: ${order.dueDate?.toLocaleDateString(
+              "mn-MN"
+            )}`
+          : "Бэлэн мөнгөөр төлсөн",
       printedAt: new Date(),
     };
 
@@ -670,6 +683,116 @@ export const getStoreOrders = async (
   try {
     req.query.orderType = "Store";
     await getAllOrders(req, res, next);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getOrderReceiptPDF = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const authReq = req as AuthRequest;
+    const { id } = req.params;
+    const download = req.query.download === "true";
+
+    const order = await prisma.order.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        customer: true,
+        agent: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        orderItems: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                nameMongolian: true,
+                nameEnglish: true,
+                productCode: true,
+              },
+            },
+          },
+        },
+        payments: true,
+      },
+    });
+
+    if (!order) {
+      throw new AppError("Order not found", 404);
+    }
+
+    // Sales agents can only see their own orders
+    if (
+      authReq.user?.role === "SalesAgent" &&
+      order.agentId !== authReq.user.userId
+    ) {
+      throw new AppError("You do not have access to this order", 403);
+    }
+
+    // Prepare data for PDF generation
+    const receiptData = {
+      orderId: order.id,
+      orderNumber: `ORD-${order.id.toString().padStart(6, "0")}`,
+      orderDate: order.orderDate,
+      orderType: order.orderType,
+      status: order.status,
+      customer: {
+        name: order.customer.name,
+        address: order.customer.address,
+        phoneNumber: order.customer.phoneNumber,
+      },
+      agent: {
+        name: order.agent.name,
+      },
+      items: order.orderItems.map((item) => ({
+        productName: item.product.nameMongolian,
+        productCode: item.product.productCode || "N/A",
+        quantity: item.quantity,
+        unitPrice: parseFloat(item.unitPrice.toString()),
+        total: parseFloat(item.unitPrice.toString()) * item.quantity,
+      })),
+      subtotal: parseFloat(
+        order.subtotalAmount?.toString() || order.totalAmount?.toString() || "0"
+      ),
+      vat: parseFloat(order.vatAmount?.toString() || "0"),
+      total: parseFloat(order.totalAmount?.toString() || "0"),
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      paidAmount: parseFloat(order.paidAmount?.toString() || "0"),
+      remainingAmount: parseFloat(order.remainingAmount?.toString() || "0"),
+      creditTermDays: order.creditTermDays,
+      dueDate: order.dueDate,
+    };
+
+    // Generate PDF
+    const pdfBuffer = await pdfService.generateOrderReceiptPDF(receiptData);
+
+    // Set appropriate headers
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      download
+        ? `attachment; filename="receipt-${receiptData.orderNumber}.pdf"`
+        : `inline; filename="receipt-${receiptData.orderNumber}.pdf"`
+    );
+    res.setHeader("Content-Length", pdfBuffer.length);
+
+    // Send PDF
+    res.send(pdfBuffer);
+
+    logger.info(
+      `PDF receipt generated for order ${order.id} (${
+        download ? "download" : "view"
+      })`
+    );
   } catch (error) {
     next(error);
   }

@@ -9,6 +9,7 @@ import {
   prepareOrderDocument,
   getMarketOrders,
   getStoreOrders,
+  getOrderReceiptPDF,
 } from "../controllers/orders.controller";
 import { authMiddleware, checkRole } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validation.middleware";
@@ -342,6 +343,50 @@ router.get(
   "/:id/document",
   validate([param("id").isInt().withMessage("Valid order ID is required")]),
   prepareOrderDocument
+);
+
+/**
+ * @swagger
+ * /api/orders/{id}/receipt/pdf:
+ *   get:
+ *     summary: Get order receipt as PDF
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Generate and download or view order e-receipt as PDF with full details including company info, customer data, items, VAT, payment info, and QR code
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Order ID
+ *       - in: query
+ *         name: download
+ *         required: false
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: If true, downloads the PDF. If false, displays in browser
+ *     responses:
+ *       200:
+ *         description: PDF file generated successfully
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       403:
+ *         description: Access denied - Sales agents can only access their own orders
+ *       404:
+ *         description: Order not found
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
+router.get(
+  "/:id/receipt/pdf",
+  validate([param("id").isInt().withMessage("Valid order ID is required")]),
+  getOrderReceiptPDF
 );
 
 /**
