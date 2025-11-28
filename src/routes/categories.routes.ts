@@ -95,7 +95,7 @@ router.use(authMiddleware);
  */
 router.post(
   "/",
-  checkRole(["Admin", "Manager"]),
+  checkRole(["Admin", "Manager", "SalesAgent"]),
   validate([
     body("nameMongolian")
       .notEmpty()

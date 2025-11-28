@@ -344,7 +344,7 @@ router.get(
  */
 router.get(
   "/sales-by-period",
-  checkRole(["Admin", "Manager", "SalesAgent"]),
+  checkRole(["Admin", "Manager"]),
   validate([
     query("startDate")
       .notEmpty()

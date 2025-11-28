@@ -121,7 +121,7 @@ router.use(authMiddleware);
  */
 router.post(
   "/",
-  checkRole(["Admin", "Manager"]),
+  checkRole(["Admin", "Manager", "SalesAgent"]),
   validate([
     body("nameMongolian").notEmpty().withMessage("Mongolian name is required"),
     body("nameEnglish").optional().isString(),

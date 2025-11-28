@@ -118,7 +118,7 @@ router.use(authMiddleware);
  */
 router.post(
   "/",
-  checkRole(["Admin", "Manager"]),
+  checkRole(["Admin", "Manager", "SalesAgent"]),
   validate([
     body("name").notEmpty().withMessage("Customer name is required"),
     body("address").optional().isString(),
