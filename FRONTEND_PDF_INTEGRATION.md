@@ -199,3 +199,7 @@ Test with these scenarios:
 - QR code contains order verification data
 - Sales agents can only view receipts for their own orders
 
+
+
+
+

@@ -103,7 +103,10 @@ async function batchProcess<T>(
         } ${label}`
       );
     } catch (error) {
-      console.error(`  ✗ Error processing ${label} batch ${i}-${i + batchSize}:`, error);
+      console.error(
+        `  ✗ Error processing ${label} batch ${i}-${i + batchSize}:`,
+        error
+      );
     }
   }
 }
@@ -162,7 +165,7 @@ async function main() {
       address: "Улаанбаатар хот",
       storeType: "Market",
       locationLatitude: 47.918869,
-      locationLongitude: 106.917580,
+      locationLongitude: 106.91758,
       isActive: true,
     },
   });
@@ -226,7 +229,7 @@ async function main() {
   // Create suppliers from uildwerlegch
   console.log("  Creating suppliers...");
   const uildwerlegchData = loadJsonData("uildwerlegch");
-  
+
   for (const row of uildwerlegchData.rows) {
     const obj = mapRowToObject(uildwerlegchData.columns, row);
     try {
@@ -247,7 +250,7 @@ async function main() {
   // Create categories from turul
   console.log("  Creating categories...");
   const turulData = loadJsonData("turul");
-  
+
   for (const row of turulData.rows) {
     const obj = mapRowToObject(turulData.columns, row);
     try {
@@ -287,7 +290,7 @@ async function main() {
 
   for (const row of baraaData.rows) {
     const obj = mapRowToObject(baraaData.columns, row);
-    
+
     // Skip products without names
     if (!obj.mon_ner) continue;
 
@@ -343,7 +346,7 @@ async function main() {
 
   for (const row of borluulagchData.rows) {
     const obj = mapRowToObject(borluulagchData.columns, row);
-    
+
     try {
       const email = `agent${obj.id}@warehouse.com`;
       const employee = await prisma.employee.create({
@@ -391,13 +394,13 @@ async function main() {
 
   for (const row of hariltsagchData.rows) {
     const obj = mapRowToObject(hariltsagchData.columns, row);
-    
+
     if (!obj.ner) continue;
 
     const customerTypeId = obj.turul
       ? customerTypeMap.get(obj.turul) || customerTypeMap.get(2)
       : customerTypeMap.get(2);
-    
+
     const assignedAgentId = obj.borluulagch_id
       ? idMapper.get("borluulagch", obj.borluulagch_id)
       : null;
@@ -407,7 +410,9 @@ async function main() {
       organizationName: obj.realname || null,
       organizationType: null,
       contactPersonName: null,
-      registrationNumber: obj.hariltsagch_id ? String(obj.hariltsagch_id) : null,
+      registrationNumber: obj.hariltsagch_id
+        ? String(obj.hariltsagch_id)
+        : null,
       address: obj.hayg || null,
       district: obj.dvvreg || null,
       detailedAddress: null,
@@ -450,11 +455,11 @@ async function main() {
 
   for (const row of containerData.rows) {
     const obj = mapRowToObject(containerData.columns, row);
-    
+
     const productId = obj.baraanii_id
       ? idMapper.get("baraa", obj.baraanii_id)
       : null;
-    
+
     if (!productId) continue;
 
     const arrivalDate = parseDate(obj.ognoo) || new Date();
@@ -500,11 +505,11 @@ async function main() {
 
   for (const row of planData.rows) {
     const obj = mapRowToObject(planData.columns, row);
-    
+
     const agentId = obj.salerID
       ? idMapper.get("borluulagch", obj.salerID)
       : null;
-    
+
     if (!agentId) continue;
 
     // Find a customer for this agent
@@ -558,11 +563,11 @@ async function main() {
   for (let i = 0; i < positionData.rows.length; i += 100) {
     const row = positionData.rows[i];
     const obj = mapRowToObject(positionData.columns, row);
-    
+
     const agentId = obj.borluulagch_id
       ? idMapper.get("borluulagch", obj.borluulagch_id)
       : null;
-    
+
     if (!agentId) continue;
 
     const lat = parseCoordinate(obj.x);
@@ -601,13 +606,13 @@ async function main() {
   // ============================================================================
   console.log("\n🛒 Phase 9: Creating orders...");
   const zahialgaData = loadJsonData("zahialga");
-  
+
   // Group order items by customer, date, and agent to create orders
   const orderGroups = new Map<string, any[]>();
-  
+
   for (const row of zahialgaData.rows) {
     const obj = mapRowToObject(zahialgaData.columns, row);
-    
+
     const customerId = obj.baiguulgiin_id
       ? idMapper.get("hariltsagch", obj.baiguulgiin_id)
       : null;
@@ -617,17 +622,17 @@ async function main() {
     const productId = obj.padaanii_id
       ? idMapper.get("baraa", obj.padaanii_id)
       : null;
-    
+
     if (!customerId || !agentId || !productId) continue;
-    
+
     const orderDate = parseDate(obj.ognoo) || new Date();
-    const dateKey = orderDate.toISOString().split('T')[0];
+    const dateKey = orderDate.toISOString().split("T")[0];
     const groupKey = `${customerId}-${agentId}-${dateKey}`;
-    
+
     if (!orderGroups.has(groupKey)) {
       orderGroups.set(groupKey, []);
     }
-    
+
     orderGroups.get(groupKey)!.push({
       customerId,
       agentId,
@@ -641,12 +646,16 @@ async function main() {
     });
   }
 
-  console.log(`  Found ${orderGroups.size} order groups from ${zahialgaData.rows.length} items`);
-  
+  console.log(
+    `  Found ${orderGroups.size} order groups from ${zahialgaData.rows.length} items`
+  );
+
   // Sample orders - take only recent ones or every Nth to avoid overwhelming
   const orderGroupsArray = Array.from(orderGroups.entries());
-  const sampledOrders = orderGroupsArray.filter((_, index) => index % 100 === 0).slice(0, 1000);
-  
+  const sampledOrders = orderGroupsArray
+    .filter((_, index) => index % 100 === 0)
+    .slice(0, 1000);
+
   let ordersCreated = 0;
   let orderItemsCreated = 0;
 
@@ -657,7 +666,7 @@ async function main() {
       for (const [groupKey, items] of batch) {
         try {
           const firstItem = items[0];
-          
+
           // Map payment method
           let paymentMethod = "Cash";
           const paymentStr = String(firstItem.paymentMethod).toLowerCase();
@@ -668,7 +677,10 @@ async function main() {
           }
 
           // Calculate totals
-          const subtotal = items.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+          const subtotal = items.reduce(
+            (sum, item) => sum + (item.totalPrice || 0),
+            0
+          );
           const vatAmount = 0; // Legacy system doesn't have VAT breakdown
           const totalAmount = subtotal;
 
@@ -712,13 +724,15 @@ async function main() {
     "orders"
   );
 
-  console.log(`  ✓ Orders created: ${ordersCreated} with ${orderItemsCreated} items (sampled)`);
+  console.log(
+    `  ✓ Orders created: ${ordersCreated} with ${orderItemsCreated} items (sampled)`
+  );
 
   // ============================================================================
   // PHASE 10: Returns
   // ============================================================================
   console.log("\n🔄 Phase 10: Creating returns...");
-  
+
   // Create sample returns from orders
   const recentOrders = await prisma.order.findMany({
     take: 50,
@@ -736,8 +750,11 @@ async function main() {
     // Randomly create returns for some order items
     if (Math.random() > 0.8 && order.orderItems.length > 0) {
       const item = order.orderItems[0];
-      const returnQty = Math.min(item.quantity, Math.floor(Math.random() * 3) + 1);
-      
+      const returnQty = Math.min(
+        item.quantity,
+        Math.floor(Math.random() * 3) + 1
+      );
+
       try {
         await prisma.return.create({
           data: {
@@ -761,7 +778,7 @@ async function main() {
   // PHASE 11: Inventory Balances
   // ============================================================================
   console.log("\n📊 Phase 11: Creating inventory balances...");
-  
+
   const allProducts = await prisma.product.findMany();
   const now = new Date();
   const balances: any[] = [];
@@ -806,7 +823,9 @@ async function main() {
   console.log(`  📦 Product Batches: ${batches.length}`);
   console.log(`  🚚 Delivery Plans: ${plans.length}`);
   console.log(`  📍 Agent Locations: ${locations.length} (sampled)`);
-  console.log(`  🛒 Orders: ${ordersCreated} with ${orderItemsCreated} items (sampled)`);
+  console.log(
+    `  🛒 Orders: ${ordersCreated} with ${orderItemsCreated} items (sampled)`
+  );
   console.log(`  🔄 Returns: ${returnsCreated}`);
   console.log(`  📊 Inventory Balances: ${balances.length}`);
   console.log("=".repeat(60));
@@ -825,4 +844,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-
