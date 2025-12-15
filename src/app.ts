@@ -24,6 +24,7 @@ import reportsRoutes from "./routes/reports.routes";
 import posapiRoutes from "./routes/posapi.routes";
 import storesRoutes from "./routes/stores.routes";
 import analyticsRoutes from "./routes/analytics.routes";
+import ebarimtRoutes from "./routes/ebarimt.routes";
 
 const app: Application = express();
 
@@ -123,6 +124,7 @@ app.use("/api/reports", reportsRoutes);
 app.use("/api/posapi", posapiRoutes);
 app.use("/api/stores", storesRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api/ebarimt", ebarimtRoutes);
 
 // 404 handler
 app.use(notFoundHandler);

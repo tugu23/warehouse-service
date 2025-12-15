@@ -73,8 +73,14 @@ export const getAllCustomers = async (
   try {
     const authReq = req as AuthRequest;
     const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const skip = (page - 1) * limit;
+    let limit: number | undefined = parseInt(req.query.limit as string) || 10;
+    let skip: number | undefined = (page - 1) * limit;
+
+    if (req.query.limit === "all") {
+      limit = undefined;
+      skip = undefined;
+    }
+
     const district = req.query.district as string;
     const registrationNumber = req.query.registrationNumber as string;
     const isVatPayer = req.query.isVatPayer as string;
@@ -137,9 +143,9 @@ export const getAllCustomers = async (
         customers,
         pagination: {
           page,
-          limit,
+          limit: limit || total,
           total,
-          totalPages: Math.ceil(total / limit),
+          totalPages: limit ? Math.ceil(total / limit) : 1,
         },
       },
     });

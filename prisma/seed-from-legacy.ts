@@ -434,7 +434,27 @@ async function main() {
       for (const customerData of batch) {
         try {
           const { legacyId, ...data } = customerData;
-          const customer = await prisma.customer.create({ data });
+          // Use upsert to prevent duplicates if script runs multiple times
+          const uniqueKey = {
+            name: data.name,
+            phoneNumber: data.phoneNumber || "",
+            registrationNumber: data.registrationNumber || "",
+            address: data.address || "",
+          };
+          
+          // Check if customer already exists
+          const existing = await prisma.customer.findFirst({
+            where: uniqueKey,
+          });
+          
+          let customer;
+          if (existing) {
+            customer = existing;
+            console.log(`  ℹ️  Skipping duplicate customer: ${data.name}`);
+          } else {
+            customer = await prisma.customer.create({ data });
+          }
+          
           idMapper.set("hariltsagch", legacyId, customer.id);
         } catch (error) {
           console.error(`  ⚠️  Error creating customer:`, error);

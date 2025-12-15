@@ -52,6 +52,9 @@ const router = Router();
  *           type: number
  *           format: decimal
  *           example: 700
+ *         isActive:
+ *           type: boolean
+ *           example: true
  *         createdAt:
  *           type: string
  *           format: date-time
@@ -99,6 +102,9 @@ router.use(authMiddleware);
  *               priceRetail:
  *                 type: number
  *                 example: 2000
+ *               isActive:
+ *                 type: boolean
+ *                 example: true
  *     responses:
  *       201:
  *         description: Product created successfully
@@ -134,6 +140,7 @@ router.post(
       .withMessage("Stock quantity must be a number"),
     body("priceWholesale").optional().isDecimal(),
     body("priceRetail").optional().isDecimal(),
+    body("isActive").optional().isBoolean(),
   ]),
   createProduct
 );
@@ -250,6 +257,8 @@ router.get(
  *                 type: number
  *               priceRetail:
  *                 type: number
+ *               isActive:
+ *                 type: boolean
  *     responses:
  *       200:
  *         description: Product updated successfully
@@ -268,6 +277,7 @@ router.put(
     body("categoryId").optional().isInt(),
     body("priceWholesale").optional().isDecimal(),
     body("priceRetail").optional().isDecimal(),
+    body("isActive").optional().isBoolean(),
   ]),
   updateProduct
 );

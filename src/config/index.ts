@@ -25,6 +25,15 @@ export const config = {
     timeout: parseInt(process.env.POS_API_TIMEOUT || "30000", 10),
     mockMode: process.env.POS_API_MOCK_MODE === "true" || true,
   },
+  ebarimt: {
+    apiUrl: process.env.EBARIMT_API_URL || "https://api.ebarimt.mn/api",
+    posNo: process.env.EBARIMT_POS_NO || "",
+    merchantTin: process.env.EBARIMT_MERCHANT_TIN || "",
+    apiKey: process.env.EBARIMT_API_KEY || "",
+    apiSecret: process.env.EBARIMT_API_SECRET || "",
+    districtCode: process.env.EBARIMT_DISTRICT_CODE || "01",
+    mockMode: process.env.EBARIMT_MOCK_MODE === "true" || true,
+  },
   creditPayment: {
     defaultTermDays: parseInt(process.env.DEFAULT_CREDIT_TERM_DAYS || "30", 10),
     gracePeriodDays: parseInt(process.env.CREDIT_GRACE_PERIOD_DAYS || "3", 10),

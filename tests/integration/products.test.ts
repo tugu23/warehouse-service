@@ -52,6 +52,39 @@ describe("Products API", () => {
       expect(response.body.data.product.stockQuantity).toBe(75);
     });
 
+    it("should create product with isActive field", async () => {
+      const response = await request(app)
+        .post("/api/products")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          nameMongolian: "Идэвхгүй бараа",
+          nameEnglish: "Inactive Product",
+          productCode: "TEST-INACTIVE",
+          supplierId: testData.supplier.id,
+          isActive: false,
+        })
+        .expect(201);
+
+      expect(response.body.status).toBe("success");
+      expect(response.body.data.product.isActive).toBe(false);
+    });
+
+    it("should default isActive to true when not provided", async () => {
+      const response = await request(app)
+        .post("/api/products")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          nameMongolian: "Идэвхтэй бараа",
+          nameEnglish: "Active Product",
+          productCode: "TEST-ACTIVE",
+          supplierId: testData.supplier.id,
+        })
+        .expect(201);
+
+      expect(response.body.status).toBe("success");
+      expect(response.body.data.product.isActive).toBe(true);
+    });
+
     it("should create product as manager", async () => {
       const response = await request(app)
         .post("/api/products")
@@ -118,6 +151,8 @@ describe("Products API", () => {
       expect(product).toHaveProperty("nameMongolian");
       expect(product).toHaveProperty("stockQuantity");
       expect(product).toHaveProperty("priceRetail");
+      expect(product).toHaveProperty("isActive");
+      expect(typeof product.isActive).toBe("boolean");
     });
   });
 
@@ -163,6 +198,30 @@ describe("Products API", () => {
       expect(response.body.status).toBe("success");
       expect(response.body.data.product.nameEnglish).toBe("Updated Product");
       expect(parseFloat(response.body.data.product.priceRetail)).toBe(1800);
+    });
+
+    it("should toggle product isActive status", async () => {
+      const response = await request(app)
+        .put(`/api/products/${testData.products.product1.id}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          isActive: false,
+        })
+        .expect(200);
+
+      expect(response.body.status).toBe("success");
+      expect(response.body.data.product.isActive).toBe(false);
+
+      // Toggle back to active
+      const response2 = await request(app)
+        .put(`/api/products/${testData.products.product1.id}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          isActive: true,
+        })
+        .expect(200);
+
+      expect(response2.body.data.product.isActive).toBe(true);
     });
 
     it("should update product as manager", async () => {

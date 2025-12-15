@@ -24,6 +24,7 @@ export const createProduct = async (
       pricePerBox,
       netWeight,
       grossWeight,
+      isActive,
     } = req.body;
 
     // Check if product code already exists
@@ -64,6 +65,7 @@ export const createProduct = async (
         pricePerBox,
         netWeight,
         grossWeight,
+        isActive: isActive !== undefined ? isActive : true,
       },
       include: {
         supplier: true,
@@ -89,8 +91,14 @@ export const getAllProducts = async (
 ): Promise<void> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const skip = (page - 1) * limit;
+    let limit: number | undefined = parseInt(req.query.limit as string) || 10;
+    let skip: number | undefined = (page - 1) * limit;
+
+    if (req.query.limit === "all") {
+      limit = undefined;
+      skip = undefined;
+    }
+
     const search = req.query.search as string;
 
     const where: any = {};
@@ -125,9 +133,9 @@ export const getAllProducts = async (
         products,
         pagination: {
           page,
-          limit,
+          limit: limit || total,
           total,
-          totalPages: Math.ceil(total / limit),
+          totalPages: limit ? Math.ceil(total / limit) : 1,
         },
       },
     });
@@ -186,6 +194,7 @@ export const updateProduct = async (
       pricePerBox,
       netWeight,
       grossWeight,
+      isActive,
     } = req.body;
 
     const product = await prisma.product.findUnique({
@@ -234,6 +243,7 @@ export const updateProduct = async (
         pricePerBox,
         netWeight,
         grossWeight,
+        isActive,
       },
       include: {
         supplier: true,

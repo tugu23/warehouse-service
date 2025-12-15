@@ -6,7 +6,8 @@ import logger from "../utils/logger";
 import { Prisma } from "@prisma/client";
 import { addDays, isBefore, startOfDay } from "date-fns";
 import vatService from "../services/vat.service";
-import pdfService from "../services/pdf.service";
+import pdfService from "../services/pdf-pdfkit.service";
+import { ebarimtService } from "../services/ebarimt.service";
 
 export const createOrder = async (
   req: Request,
@@ -286,6 +287,57 @@ export const createOrder = async (
     logger.info(
       `New ${order.orderType} order created: Order ID ${order.id}, Subtotal: ${order.subtotalAmount}, VAT: ${order.vatAmount}, Total: ${order.totalAmount}, Payment: ${paymentMethod}`
     );
+
+    // Register with e-Barimt for Store orders only
+    if (order.orderType === "Store") {
+      try {
+        // Generate unique order number if not exists
+        const orderNumber = `ORD${order.id}${Date.now()}`;
+        
+        // Update order with order number before e-Barimt registration
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { orderNumber },
+        });
+
+        // Prepare e-Barimt data
+        const ebarimtData = ebarimtService.prepareOrderData({
+          ...order,
+          orderNumber,
+        });
+
+        // Register with e-Barimt
+        const ebarimtResult = await ebarimtService.registerBill(ebarimtData);
+
+        if (ebarimtResult.success) {
+          // Update order with e-Barimt information
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              ebarimtId: ebarimtResult.id,
+              ebarimtBillId: ebarimtResult.billId,
+              ebarimtLottery: ebarimtResult.lottery,
+              ebarimtQrData: ebarimtResult.qrData,
+              ebarimtRegistered: true,
+              ebarimtDate: new Date(),
+            },
+          });
+
+          logger.info(
+            `Order ${order.id} registered with e-Barimt. Lottery: ${ebarimtResult.lottery}, Bill ID: ${ebarimtResult.billId}`
+          );
+        } else {
+          logger.error(
+            `Failed to register order ${order.id} with e-Barimt: ${ebarimtResult.message}`
+          );
+          // Note: Order is still created even if e-Barimt registration fails
+          // Can be retried later using manual endpoint
+        }
+      } catch (error) {
+        logger.error(`Error during e-Barimt registration for order ${order.id}:`, error);
+        // Continue - order is already created
+      }
+    }
 
     res.status(201).json({
       status: "success",
@@ -707,6 +759,7 @@ export const getOrderReceiptPDF = async (
             id: true,
             name: true,
             email: true,
+            phoneNumber: true,
           },
         },
         orderItems: {
@@ -729,6 +782,19 @@ export const getOrderReceiptPDF = async (
       throw new AppError("Order not found", 404);
     }
 
+    // Validate that order has required data for PDF generation
+    if (!order.customer) {
+      throw new AppError("Order customer data is missing", 500);
+    }
+
+    if (!order.agent) {
+      throw new AppError("Order agent data is missing", 500);
+    }
+
+    if (!order.orderItems || order.orderItems.length === 0) {
+      throw new AppError("Order has no items", 500);
+    }
+
     // Sales agents can only see their own orders
     if (
       authReq.user?.role === "SalesAgent" &&
@@ -740,7 +806,7 @@ export const getOrderReceiptPDF = async (
     // Prepare data for PDF generation
     const receiptData = {
       orderId: order.id,
-      orderNumber: `ORD-${order.id.toString().padStart(6, "0")}`,
+      orderNumber: order.orderNumber || `ORD-${order.id.toString().padStart(6, "0")}`,
       orderDate: order.orderDate,
       orderType: order.orderType,
       status: order.status,
@@ -751,6 +817,7 @@ export const getOrderReceiptPDF = async (
       },
       agent: {
         name: order.agent.name,
+        phoneNumber: order.agent.phoneNumber,
       },
       items: order.orderItems.map((item) => ({
         productName: item.product.nameMongolian,
@@ -770,13 +837,20 @@ export const getOrderReceiptPDF = async (
       remainingAmount: parseFloat(order.remainingAmount?.toString() || "0"),
       creditTermDays: order.creditTermDays,
       dueDate: order.dueDate,
+      // E-Barimt fields
+      ebarimtId: order.ebarimtId,
+      ebarimtBillId: order.ebarimtBillId,
+      ebarimtLottery: order.ebarimtLottery,
+      ebarimtQrData: order.ebarimtQrData,
+      ebarimtRegistered: order.ebarimtRegistered,
+      ebarimtDate: order.ebarimtDate,
     };
 
     // Generate PDF
     const pdfBuffer = await pdfService.generateOrderReceiptPDF(receiptData);
 
-    // Set appropriate headers
-    res.setHeader("Content-Type", "application/pdf");
+    // Set appropriate headers with UTF-8 encoding
+    res.setHeader("Content-Type", "application/pdf; charset=utf-8");
     res.setHeader(
       "Content-Disposition",
       download
@@ -784,6 +858,7 @@ export const getOrderReceiptPDF = async (
         : `inline; filename="receipt-${receiptData.orderNumber}.pdf"`
     );
     res.setHeader("Content-Length", pdfBuffer.length);
+    res.setHeader("Content-Encoding", "utf-8");
 
     // Send PDF
     res.send(pdfBuffer);
@@ -794,6 +869,11 @@ export const getOrderReceiptPDF = async (
       })`
     );
   } catch (error) {
+    logger.error("Error generating PDF receipt:", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      orderId: req.params.id,
+    });
     next(error);
   }
 };

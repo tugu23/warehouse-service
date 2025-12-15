@@ -1,6 +1,8 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import QRCode from "qrcode";
+import { RobotoRegular } from "../fonts/Roboto-Regular";
+import { RobotoBold } from "../fonts/Roboto-Bold";
 
 interface ReceiptItem {
   productName: string;
@@ -23,6 +25,7 @@ interface ReceiptData {
   };
   agent: {
     name: string;
+    phoneNumber?: string | null;
   };
   items: ReceiptItem[];
   subtotal: number;
@@ -34,296 +37,425 @@ interface ReceiptData {
   remainingAmount: number;
   creditTermDays?: number | null;
   dueDate?: Date | null;
+  // E-Barimt fields
+  ebarimtId?: string | null;
+  ebarimtBillId?: string | null;
+  ebarimtLottery?: string | null;
+  ebarimtQrData?: string | null;
+  ebarimtRegistered?: boolean;
+  ebarimtDate?: Date | null;
 }
 
 class PDFService {
-  private readonly COMPANY_NAME = "Warehouse Management System";
-  private readonly COMPANY_ADDRESS = "Ulaanbaatar, Mongolia";
-  private readonly COMPANY_PHONE = "+976-XXXX-XXXX";
+  private readonly COMPANY_NAME = "GLF LLC OASIS Boony tov";
+  private readonly COMPANY_NAME_EN = "GLF LLC OASIS Wholesale Center";
+  private readonly COMPANY_ADDRESS = "Mongol, Ulaanbaatar, Sukhbaatar duureg, 6-r khoroo, 27-49";
+  private readonly COMPANY_ADDRESS_EN = "Mongolia, Ulaanbaatar, Sukhbaatar, 6th khoroo, 27-49";
+  private readonly COMPANY_PHONES = ["70121128", "88048350", "89741277"];
+  private readonly COMPANY_TIN = "5317878"; // Tax Identification Number (TTD)
   private readonly COMPANY_EMAIL = "info@warehouse.mn";
 
   async generateOrderReceiptPDF(data: ReceiptData): Promise<Buffer> {
-    const doc = new jsPDF({
-      orientation: "portrait",
-      unit: "mm",
-      format: "a4",
-    });
+    try {
+      // A5 Format: 148mm x 210mm (portrait)
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: [148, 210], // A5 size
+      });
 
-    // Set font
-    doc.setFont("helvetica");
+      // Add Roboto fonts for Cyrillic support
+      doc.addFileToVFS("Roboto-Regular.ttf", RobotoRegular);
+      doc.addFont("Roboto-Regular.ttf", "Roboto", "normal");
+      
+      doc.addFileToVFS("Roboto-Bold.ttf", RobotoBold);
+      doc.addFont("Roboto-Bold.ttf", "Roboto", "bold");
+      
+      // Use Roboto font (supports Mongolian Cyrillic)
+      doc.setFont("Roboto");
 
-    // Generate QR Code
-    const qrCodeDataURL = await this.generateQRCode(data);
+      // Generate QR Code (E-Barimt QR if available, otherwise order QR)
+      const qrCodeDataURL = await this.generateQRCode(data);
 
-    // Add content to PDF
-    this.addHeader(doc);
-    this.addCompanyInfo(doc);
-    this.addOrderInfo(doc, data);
-    this.addCustomerInfo(doc, data);
-    this.addItemsTable(doc, data);
-    this.addTotalsSection(doc, data);
-    this.addPaymentInfo(doc, data);
-    this.addQRCode(doc, qrCodeDataURL);
-    this.addFooter(doc);
+      // Add content to PDF (A5 format optimized)
+      let yPos = this.addA5Header(doc);
+      yPos = this.addA5GeneralInfo(doc, data, yPos);
+      yPos = this.addA5SellerInfo(doc, data, yPos);
+      yPos = this.addA5BuyerInfo(doc, data, yPos);
+      yPos = this.addA5StoreInfo(doc, yPos);
+      yPos = this.addA5ItemsTable(doc, data, yPos);
+      yPos = this.addA5VATInfo(doc, data, yPos);
+      yPos = this.addA5QRCodeAndLottery(doc, data, qrCodeDataURL, yPos);
+      this.addA5Footer(doc);
 
-    // Convert to Buffer
-    const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
-    return pdfBuffer;
+      // Convert to Buffer
+      const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
+      
+      return pdfBuffer;
+    } catch (error) {
+      console.error("Error in generateOrderReceiptPDF:", error);
+      throw new Error(`Failed to generate PDF: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
-  private addHeader(doc: jsPDF): void {
-    // Title
-    doc.setFontSize(20);
-    doc.setFont("helvetica", "bold");
-    doc.text("ORDER RECEIPT", 105, 20, { align: "center" });
-    doc.setFont("helvetica", "normal");
-  }
-
-  private addCompanyInfo(doc: jsPDF): void {
+  // A5 Format Methods (148mm x 210mm)
+  private addA5Header(doc: jsPDF): number {
+    let yPos = 10;
+    
+    // Title - centered
+    doc.setFontSize(14);
+    doc.setFont("Roboto", "bold");
+    doc.text("Агуулахын бараа бүртгэлийн систем", 74, yPos, { align: "center" });
+    
+    yPos += 6;
     doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.text(this.COMPANY_NAME, 105, 30, { align: "center" });
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text(this.COMPANY_ADDRESS, 105, 35, { align: "center" });
-    doc.text(`${this.COMPANY_PHONE} | ${this.COMPANY_EMAIL}`, 105, 40, {
-      align: "center",
-    });
-
+    doc.setFont("Roboto", "normal");
+    doc.text("E-Barimt Receipt / Төлбөрийн баримт", 74, yPos, { align: "center" });
+    
     // Divider line
-    doc.setLineWidth(0.5);
-    doc.line(15, 45, 195, 45);
+    yPos += 4;
+    doc.setLineWidth(0.3);
+    doc.line(10, yPos, 138, yPos);
+    
+    return yPos + 5;
   }
 
-  private addOrderInfo(doc: jsPDF, data: ReceiptData): void {
-    let yPos = 55;
-    doc.setFontSize(10);
-
-    // Left column
-    doc.setFont("helvetica", "bold");
-    doc.text("Order Number:", 15, yPos);
-    doc.setFont("helvetica", "normal");
-    doc.text(data.orderNumber, 55, yPos);
-
-    yPos += 6;
-    doc.setFont("helvetica", "bold");
-    doc.text("Order Date:", 15, yPos);
-    doc.setFont("helvetica", "normal");
-    doc.text(this.formatDate(data.orderDate), 55, yPos);
-
-    yPos += 6;
-    doc.setFont("helvetica", "bold");
-    doc.text("Order Type:", 15, yPos);
-    doc.setFont("helvetica", "normal");
-    doc.text(data.orderType, 55, yPos);
-
-    yPos += 6;
-    doc.setFont("helvetica", "bold");
-    doc.text("Status:", 15, yPos);
-    doc.setFont("helvetica", "normal");
-    doc.text(data.status, 55, yPos);
-
-    // Right column - Sales Agent
-    doc.setFont("helvetica", "bold");
-    doc.text("Sales Agent:", 120, 55);
-    doc.setFont("helvetica", "normal");
-    doc.text(data.agent.name, 160, 55);
-  }
-
-  private addCustomerInfo(doc: jsPDF, data: ReceiptData): void {
-    let yPos = 85;
-
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.text("Customer Information", 15, yPos);
-
-    yPos += 7;
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.text("Name:", 15, yPos);
-    doc.setFont("helvetica", "normal");
-    doc.text(data.customer.name, 40, yPos);
-
-    if (data.customer.address) {
-      yPos += 6;
-      doc.setFont("helvetica", "bold");
-      doc.text("Address:", 15, yPos);
-      doc.setFont("helvetica", "normal");
-      doc.text(data.customer.address, 40, yPos);
+  private addA5GeneralInfo(doc: jsPDF, data: ReceiptData, yPos: number): number {
+    doc.setFontSize(9);
+    doc.setFont("Roboto", "bold");
+    doc.text("1. Баримтын ерөнхий мэдээлэл", 10, yPos);
+    
+    yPos += 5;
+    doc.setFontSize(8);
+    
+    // Receipt number
+    doc.setFont("Roboto", "bold");
+    doc.text("Зарлагын падаан №:", 12, yPos);
+    doc.setFont("Roboto", "normal");
+    doc.text(data.orderNumber || "N/A", 50, yPos);
+    
+    // E-Barimt DDTD
+    if (data.ebarimtBillId) {
+      yPos += 4;
+      doc.setFont("Roboto", "bold");
+      doc.text("ДДТД:", 12, yPos);
+      doc.setFont("Roboto", "normal");
+      doc.text(data.ebarimtBillId, 50, yPos);
     }
+    
+    // TIN
+    yPos += 4;
+    doc.setFont("Roboto", "bold");
+    doc.text("ТТД:", 12, yPos);
+    doc.setFont("Roboto", "normal");
+    doc.text(this.COMPANY_TIN, 50, yPos);
+    
+    // Registration date
+    if (data.ebarimtDate) {
+      yPos += 4;
+      doc.setFont("Roboto", "bold");
+      doc.text("Баримт бүртгэгдсэн огноо:", 12, yPos);
+      doc.setFont("Roboto", "normal");
+      doc.text(this.formatDateMongolian(data.ebarimtDate), 60, yPos);
+    }
+    
+    // Order date
+    yPos += 4;
+    doc.setFont("Roboto", "bold");
+    doc.text("Бараа олгосон огноо:", 12, yPos);
+    doc.setFont("Roboto", "normal");
+    doc.text(this.formatDateMongolian(data.orderDate), 60, yPos);
+    
+    // Payment method
+    yPos += 4;
+    doc.setFont("Roboto", "bold");
+    doc.text("Төлбөрийн хэлбэр:", 12, yPos);
+    doc.setFont("Roboto", "normal");
+    doc.text(this.translatePaymentMethod(data.paymentMethod), 50, yPos);
+    
+    // Divider
+    yPos += 4;
+    doc.setLineWidth(0.2);
+    doc.line(10, yPos, 138, yPos);
+    
+    return yPos + 4;
+  }
 
+  private addA5SellerInfo(doc: jsPDF, data: ReceiptData, yPos: number): number {
+    doc.setFontSize(9);
+    doc.setFont("Roboto", "bold");
+    doc.text("2. Борлуулагчийн мэдээлэл", 10, yPos);
+    
+    yPos += 5;
+    doc.setFontSize(8);
+    
+    // Seller name
+    doc.setFont("Roboto", "bold");
+    doc.text("Нэр:", 12, yPos);
+    doc.setFont("Roboto", "normal");
+    doc.text(data.agent.name || "N/A", 25, yPos);
+    
+    // Seller phone
+    if (data.agent.phoneNumber) {
+      yPos += 4;
+      doc.setFont("Roboto", "bold");
+      doc.text("Утас:", 12, yPos);
+      doc.setFont("Roboto", "normal");
+      doc.text(data.agent.phoneNumber, 25, yPos);
+    }
+    
+    // Divider
+    yPos += 4;
+    doc.setLineWidth(0.2);
+    doc.line(10, yPos, 138, yPos);
+    
+    return yPos + 4;
+  }
+
+  private addA5BuyerInfo(doc: jsPDF, data: ReceiptData, yPos: number): number {
+    doc.setFontSize(9);
+    doc.setFont("Roboto", "bold");
+    doc.text("3. Худалдан авагчийн мэдээлэл", 10, yPos);
+    
+    yPos += 5;
+    doc.setFontSize(8);
+    
+    // Buyer name
+    doc.setFont("Roboto", "bold");
+    doc.text("Нэр:", 12, yPos);
+    doc.setFont("Roboto", "normal");
+    const buyerName = data.customer.name || "N/A";
+    // Wrap long names
+    if (buyerName.length > 40) {
+      const lines = doc.splitTextToSize(buyerName, 100);
+      doc.text(lines[0], 25, yPos);
+      if (lines[1]) {
+        yPos += 4;
+        doc.text(lines[1], 25, yPos);
+      }
+    } else {
+      doc.text(buyerName, 25, yPos);
+    }
+    
+    // Buyer phone
     if (data.customer.phoneNumber) {
-      yPos += 6;
-      doc.setFont("helvetica", "bold");
-      doc.text("Phone:", 15, yPos);
-      doc.setFont("helvetica", "normal");
-      doc.text(data.customer.phoneNumber, 40, yPos);
+      yPos += 4;
+      doc.setFont("Roboto", "bold");
+      doc.text("Утас:", 12, yPos);
+      doc.setFont("Roboto", "normal");
+      doc.text(data.customer.phoneNumber, 25, yPos);
     }
+    
+    // Divider
+    yPos += 4;
+    doc.setLineWidth(0.2);
+    doc.line(10, yPos, 138, yPos);
+    
+    return yPos + 4;
   }
 
-  private addItemsTable(doc: jsPDF, data: ReceiptData): void {
+  private addA5StoreInfo(doc: jsPDF, yPos: number): number {
+    doc.setFontSize(9);
+    doc.setFont("Roboto", "bold");
+    doc.text("4. Дэлгүүр / Байгууллагын мэдээлэл", 10, yPos);
+    
+    yPos += 5;
+    doc.setFontSize(8);
+    
+    // Store name
+    doc.setFont("Roboto", "bold");
+    doc.text("Нэр:", 12, yPos);
+    doc.setFont("Roboto", "normal");
+    doc.text(this.COMPANY_NAME, 25, yPos);
+    
+    // Address
+    yPos += 4;
+    doc.setFont("Roboto", "bold");
+    doc.text("Хаяг:", 12, yPos);
+    doc.setFont("Roboto", "normal");
+    const addressLines = doc.splitTextToSize(this.COMPANY_ADDRESS, 110);
+    doc.text(addressLines, 25, yPos);
+    if (addressLines.length > 1) {
+      yPos += (addressLines.length - 1) * 4;
+    }
+    
+    // Phones
+    yPos += 4;
+    doc.setFont("Roboto", "bold");
+    doc.text("Утас:", 12, yPos);
+    doc.setFont("Roboto", "normal");
+    doc.text(this.COMPANY_PHONES.join(", "), 25, yPos);
+    
+    // Divider
+    yPos += 4;
+    doc.setLineWidth(0.2);
+    doc.line(10, yPos, 138, yPos);
+    
+    return yPos + 4;
+  }
+
+  private addA5ItemsTable(doc: jsPDF, data: ReceiptData, yPos: number): number {
+    doc.setFontSize(9);
+    doc.setFont("Roboto", "bold");
+    doc.text("5. Худалдан авсан барааны жагсаалт", 10, yPos);
+    
+    yPos += 3;
+    
     const tableData = data.items.map((item, index) => [
       (index + 1).toString(),
       item.productName,
       item.productCode,
       item.quantity.toString(),
-      this.formatCurrency(item.unitPrice),
-      this.formatCurrency(item.total),
+      this.formatCurrencyShort(item.unitPrice),
+      this.formatCurrencyShort(item.total),
     ]);
 
     autoTable(doc, {
-      startY: 120,
-      head: [["#", "Product Name", "Code", "Qty", "Unit Price", "Total"]],
+      startY: yPos,
+      head: [["№", "Барааны нэр", "Баркод", "Тоо", "Нэгж үнэ", "Нийт үнэ"]],
       body: tableData,
       theme: "grid",
       headStyles: {
-        fillColor: [41, 128, 185],
-        textColor: 255,
-        fontSize: 10,
+        fillColor: [220, 220, 220],
+        textColor: 0,
+        fontSize: 7,
         fontStyle: "bold",
         halign: "center",
       },
       bodyStyles: {
-        fontSize: 9,
+        fontSize: 7,
       },
       columnStyles: {
-        0: { halign: "center", cellWidth: 10 },
-        1: { cellWidth: 65 },
+        0: { halign: "center", cellWidth: 8 },
+        1: { cellWidth: 45 },
         2: { halign: "center", cellWidth: 25 },
-        3: { halign: "center", cellWidth: 15 },
-        4: { halign: "right", cellWidth: 30 },
-        5: { halign: "right", cellWidth: 35 },
+        3: { halign: "center", cellWidth: 12 },
+        4: { halign: "right", cellWidth: 20 },
+        5: { halign: "right", cellWidth: 20 },
       },
-      margin: { left: 15, right: 15 },
-    });
-  }
-
-  private addTotalsSection(doc: jsPDF, data: ReceiptData): void {
-    const finalY = (doc as any).lastAutoTable.finalY || 120;
-    let yPos = finalY + 10;
-
-    const xLabelStart = 130;
-    const xValueStart = 175;
-
-    doc.setFontSize(10);
-
-    // Subtotal
-    doc.setFont("helvetica", "normal");
-    doc.text("Subtotal:", xLabelStart, yPos, { align: "right" });
-    doc.text(this.formatCurrency(data.subtotal), xValueStart, yPos, {
-      align: "right",
+      margin: { left: 10, right: 10 },
     });
 
-    // VAT (only for Store orders)
-    if (data.orderType === "Store" && data.vat > 0) {
-      yPos += 6;
-      doc.text("VAT (10%):", xLabelStart, yPos, { align: "right" });
-      doc.text(this.formatCurrency(data.vat), xValueStart, yPos, {
-        align: "right",
-      });
-    }
-
-    // Total
-    yPos += 8;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text("TOTAL:", xLabelStart, yPos, { align: "right" });
-    doc.text(this.formatCurrency(data.total), xValueStart, yPos, {
-      align: "right",
-    });
-
-    // Draw line above total
-    doc.setLineWidth(0.3);
-    doc.line(130, yPos - 3, 195, yPos - 3);
+    const finalY = (doc as any).lastAutoTable.finalY || yPos;
+    
+    // Divider
+    doc.setLineWidth(0.2);
+    doc.line(10, finalY + 2, 138, finalY + 2);
+    
+    return finalY + 5;
   }
 
-  private addPaymentInfo(doc: jsPDF, data: ReceiptData): void {
-    const finalY = (doc as any).lastAutoTable.finalY || 120;
-    let yPos = finalY + 40;
-
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.text("Payment Information", 15, yPos);
-
-    yPos += 7;
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.text("Payment Method:", 15, yPos);
-    doc.setFont("helvetica", "normal");
-    doc.text(data.paymentMethod, 60, yPos);
-
-    yPos += 6;
-    doc.setFont("helvetica", "bold");
-    doc.text("Payment Status:", 15, yPos);
-    doc.setFont("helvetica", "normal");
-    doc.text(data.paymentStatus, 60, yPos);
-
-    yPos += 6;
-    doc.setFont("helvetica", "bold");
-    doc.text("Paid Amount:", 15, yPos);
-    doc.setFont("helvetica", "normal");
-    doc.text(this.formatCurrency(data.paidAmount), 60, yPos);
-
-    if (data.remainingAmount > 0) {
-      yPos += 6;
-      doc.setFont("helvetica", "bold");
-      doc.text("Remaining Amount:", 15, yPos);
-      doc.setFont("helvetica", "normal");
-      doc.text(this.formatCurrency(data.remainingAmount), 60, yPos);
-    }
-
-    // Credit terms
-    if (data.paymentMethod === "Credit" && data.dueDate) {
-      yPos += 6;
-      doc.setFont("helvetica", "bold");
-      doc.text("Credit Terms:", 15, yPos);
-      doc.setFont("helvetica", "normal");
-      doc.text(`${data.creditTermDays || 0} days`, 60, yPos);
-
-      yPos += 6;
-      doc.setFont("helvetica", "bold");
-      doc.text("Due Date:", 15, yPos);
-      doc.setFont("helvetica", "normal");
-      doc.text(this.formatDate(data.dueDate), 60, yPos);
-    }
-  }
-
-  private addQRCode(doc: jsPDF, qrCodeDataURL: string): void {
-    // Add QR code in bottom right corner
-    const qrSize = 30;
-    const xPos = 195 - qrSize;
-    const yPos = 250;
-
-    doc.addImage(qrCodeDataURL, "PNG", xPos, yPos, qrSize, qrSize);
-
-    // Add label
+  private addA5VATInfo(doc: jsPDF, data: ReceiptData, yPos: number): number {
+    doc.setFontSize(9);
+    doc.setFont("Roboto", "bold");
+    doc.text("6. НӨАТ мэдээлэл", 10, yPos);
+    
+    yPos += 5;
     doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
-    doc.text("Scan to verify", xPos + qrSize / 2, yPos + qrSize + 5, {
-      align: "center",
-    });
+    
+    const xLabel = 12;
+    const xValue = 100;
+    
+    // Subtotal (НӨАТ-тэй дүн)
+    doc.setFont("Roboto", "bold");
+    doc.text("НӨАТ-тэй дүн:", xLabel, yPos);
+    doc.setFont("Roboto", "normal");
+    doc.text(this.formatCurrencyShort(data.total), xValue, yPos, { align: "right" });
+    
+    // VAT
+    yPos += 4;
+    doc.setFont("Roboto", "bold");
+    doc.text("НӨАТ:", xLabel, yPos);
+    doc.setFont("Roboto", "normal");
+    doc.text(this.formatCurrencyShort(data.vat), xValue, yPos, { align: "right" });
+    
+    // City tax (НХАТ)
+    yPos += 4;
+    doc.setFont("Roboto", "bold");
+    doc.text("НХАТ:", xLabel, yPos);
+    doc.setFont("Roboto", "normal");
+    doc.text("0.00", xValue, yPos, { align: "right" });
+    
+    // Divider
+    yPos += 4;
+    doc.setLineWidth(0.2);
+    doc.line(10, yPos, 138, yPos);
+    
+    return yPos + 4;
   }
 
-  private addFooter(doc: jsPDF): void {
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "italic");
-    doc.text("Thank you for your business!", 105, 287, { align: "center" });
-    doc.text(`Generated on ${this.formatDateTime(new Date())}`, 105, 292, {
-      align: "center",
-    });
+  private addA5QRCodeAndLottery(doc: jsPDF, data: ReceiptData, qrCodeDataURL: string, yPos: number): number {
+    doc.setFontSize(9);
+    doc.setFont("Roboto", "bold");
+    doc.text("7. QR код ба Сугалааны дугаар", 10, yPos);
+    
+    yPos += 5;
+    
+    // Add QR code
+    const qrSize = 35;
+    const qrX = 15;
+    doc.addImage(qrCodeDataURL, "PNG", qrX, yPos, qrSize, qrSize);
+    
+    // Lottery number (if available)
+    if (data.ebarimtLottery) {
+      doc.setFontSize(11);
+      doc.setFont("Roboto", "bold");
+      doc.text("Сугалааны дугаар:", qrX + qrSize + 10, yPos + 8);
+      
+      doc.setFontSize(16);
+      doc.setFont("Roboto", "bold");
+      doc.text(data.ebarimtLottery, qrX + qrSize + 10, yPos + 18);
+      
+      doc.setFontSize(7);
+      doc.setFont("Roboto", "normal");
+      const lotteryText = doc.splitTextToSize(
+        "Та энэ дугаараа хадгалж, сарын эцэст сугалаанд оролцоно уу!",
+        60
+      );
+      doc.text(lotteryText, qrX + qrSize + 10, yPos + 24);
+    } else {
+      doc.setFontSize(8);
+      doc.setFont("Roboto", "italic");
+      doc.text("E-Barimt бүртгэлгүй", qrX + qrSize + 10, yPos + 15);
+    }
+    
+    // E-Barimt verification info
+    doc.setFontSize(7);
+    doc.setFont("Roboto", "normal");
+    doc.text("QR код уншуулж баримт шалгана уу", qrX + qrSize / 2, yPos + qrSize + 4, { align: "center" });
+    
+    return yPos + qrSize + 10;
+  }
+
+  private addA5Footer(doc: jsPDF): void {
+    const pageHeight = 210; // A5 height in mm
+    const yPos = pageHeight - 10;
+    
+    doc.setFontSize(7);
+    doc.setFont("Roboto", "italic");
+    doc.text("Худалдан авалт хийсэнд баярлалаа!", 74, yPos, { align: "center" });
+    doc.text(`Хэвлэсэн огноо: ${this.formatDateTime(new Date())}`, 74, yPos + 3, { align: "center" });
   }
 
   private async generateQRCode(data: ReceiptData): Promise<string> {
-    const qrData = JSON.stringify({
-      orderId: data.orderId,
-      orderNumber: data.orderNumber,
-      total: data.total,
-      date: data.orderDate,
-    });
+    // Prefer e-Barimt QR data if available
+    let qrData: string;
+    
+    if (data.ebarimtQrData) {
+      qrData = data.ebarimtQrData;
+    } else {
+      // Fallback to order QR
+      qrData = JSON.stringify({
+        orderId: data.orderId,
+        orderNumber: data.orderNumber,
+        total: data.total,
+        date: data.orderDate,
+      });
+    }
 
     try {
       const qrCodeDataURL = await QRCode.toDataURL(qrData, {
-        width: 200,
+        width: 300,
         margin: 1,
       });
       return qrCodeDataURL;
@@ -341,6 +473,13 @@ class PDFService {
     })}`;
   }
 
+  private formatCurrencyShort(amount: number): string {
+    return amount.toLocaleString("en-US", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+  }
+
   private formatDate(date: Date | string): string {
     const d = new Date(date);
     return d.toLocaleDateString("en-US", {
@@ -348,6 +487,14 @@ class PDFService {
       month: "short",
       day: "numeric",
     });
+  }
+
+  private formatDateMongolian(date: Date | string): string {
+    const d = new Date(date);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 
   private formatDateTime(date: Date): string {
@@ -358,6 +505,18 @@ class PDFService {
       hour: "2-digit",
       minute: "2-digit",
     });
+  }
+
+  private translatePaymentMethod(method: string): string {
+    const translations: { [key: string]: string } = {
+      'Cash': 'Бэлэн',
+      'Card': 'Карт',
+      'BankTransfer': 'Шилжүүлэг',
+      'Credit': 'Зээл',
+      'QR': 'QR',
+      'Mobile': 'Гар утас',
+    };
+    return translations[method] || method;
   }
 }
 
