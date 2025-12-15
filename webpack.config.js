@@ -1,5 +1,6 @@
 const path = require('path');
 const nodeExternals = require('webpack-node-externals');
+const CopyPlugin = require('copy-webpack-plugin');
 
 module.exports = {
   entry: './src/server.ts',
@@ -12,6 +13,13 @@ module.exports = {
         use: 'ts-loader',
         exclude: /node_modules/,
       },
+      {
+        test: /\.ttf$/,
+        type: 'asset/resource',
+        generator: {
+          filename: 'fonts/[name][ext]'
+        }
+      },
     ],
   },
   resolve: {
@@ -21,6 +29,17 @@ module.exports = {
     filename: 'server.js',
     path: path.resolve(__dirname, 'dist'),
   },
+  plugins: [
+    new CopyPlugin({
+      patterns: [
+        { 
+          from: 'src/fonts/*.ttf', 
+          to: 'fonts/[name][ext]',
+          noErrorOnMissing: false
+        },
+      ],
+    }),
+  ],
   mode: 'production',
 };
 
