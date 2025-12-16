@@ -34,7 +34,7 @@ export const createProduct = async (
       });
 
       if (existingProduct) {
-        throw new AppError("Product with this code already exists", 400);
+        throw new AppError(req.t.products.codeExists, 400);
       }
     }
 
@@ -45,7 +45,7 @@ export const createProduct = async (
       });
 
       if (existingBarcode) {
-        throw new AppError("Product with this barcode already exists", 400);
+        throw new AppError(req.t.products.barcodeExists, 400);
       }
     }
 
@@ -161,7 +161,7 @@ export const getProductById = async (
     });
 
     if (!product) {
-      throw new AppError("Product not found", 404);
+      throw new AppError(req.t.products.notFound, 404);
     }
 
     res.json({
@@ -202,7 +202,7 @@ export const updateProduct = async (
     });
 
     if (!product) {
-      throw new AppError("Product not found", 404);
+      throw new AppError(req.t.products.notFound, 404);
     }
 
     // Check if new product code already exists
@@ -212,7 +212,7 @@ export const updateProduct = async (
       });
 
       if (existingProduct) {
-        throw new AppError("Product with this code already exists", 400);
+        throw new AppError(req.t.products.codeExists, 400);
       }
     }
 
@@ -223,7 +223,7 @@ export const updateProduct = async (
       });
 
       if (existingBarcode) {
-        throw new AppError("Product with this barcode already exists", 400);
+        throw new AppError(req.t.products.barcodeExists, 400);
       }
     }
 
@@ -275,13 +275,13 @@ export const adjustInventory = async (
     });
 
     if (!product) {
-      throw new AppError("Product not found", 404);
+      throw new AppError(req.t.products.notFound, 404);
     }
 
     const newQuantity = product.stockQuantity + adjustment;
 
     if (newQuantity < 0) {
-      throw new AppError("Insufficient stock for this adjustment", 400);
+      throw new AppError(req.t.products.insufficientStock, 400);
     }
 
     const updatedProduct = await prisma.product.update({
@@ -337,7 +337,7 @@ export const getProductByBarcode = async (
     });
 
     if (!product) {
-      throw new AppError("Product with this barcode not found", 404);
+      throw new AppError(req.t.products.notFound, 404);
     }
 
     logger.info(`Product scanned by barcode: ${barcode}`);

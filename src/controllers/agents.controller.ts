@@ -21,7 +21,7 @@ export const recordAgentLocation = async (
       authReq.user?.role === "SalesAgent" &&
       authReq.user.userId !== agentId
     ) {
-      throw new AppError("You can only record your own location", 403);
+      throw new AppError("Та зөвхөн өөрийн байршлыг бүртгэх боломжтой", 403);
     }
 
     // Verify agent exists
@@ -30,7 +30,7 @@ export const recordAgentLocation = async (
     });
 
     if (!agent) {
-      throw new AppError("Agent not found", 404);
+      throw new AppError("Борлуулагч олдсонгүй", 404);
     }
 
     const location = await prisma.agentLocation.create({
@@ -75,7 +75,7 @@ export const getAgentRoute = async (
     });
 
     if (!agent) {
-      throw new AppError("Agent not found", 404);
+      throw new AppError("Борлуулагч олдсонгүй", 404);
     }
 
     const where: any = { agentId };

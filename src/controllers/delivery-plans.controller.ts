@@ -29,7 +29,7 @@ export const createDeliveryPlan = async (
     });
 
     if (!agent) {
-      throw new AppError("Agent not found", 404);
+      throw new AppError("Борлуулагч олдсонгүй", 404);
     }
 
     // Validate customer exists
@@ -38,7 +38,7 @@ export const createDeliveryPlan = async (
     });
 
     if (!customer) {
-      throw new AppError("Customer not found", 404);
+      throw new AppError(req.t.customers.notFound, 404);
     }
 
     // If orderId provided, validate it exists
@@ -48,7 +48,7 @@ export const createDeliveryPlan = async (
       });
 
       if (!order) {
-        throw new AppError("Order not found", 404);
+        throw new AppError(req.t.orders.notFound, 404);
       }
     }
 
@@ -223,7 +223,7 @@ export const getDeliveryPlanById = async (
     });
 
     if (!plan) {
-      throw new AppError("Delivery plan not found", 404);
+      throw new AppError("Хүргэлтийн төлөвлөгөө олдсонгүй", 404);
     }
 
     res.json({
@@ -257,7 +257,7 @@ export const updateDeliveryPlan = async (
     });
 
     if (!plan) {
-      throw new AppError("Delivery plan not found", 404);
+      throw new AppError("Хүргэлтийн төлөвлөгөө олдсонгүй", 404);
     }
 
     const updateData: any = {};
@@ -338,7 +338,7 @@ export const updateDeliveryPlanStatus = async (
     });
 
     if (!plan) {
-      throw new AppError("Delivery plan not found", 404);
+      throw new AppError("Хүргэлтийн төлөвлөгөө олдсонгүй", 404);
     }
 
     const updateData: any = { status };

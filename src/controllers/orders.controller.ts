@@ -7,7 +7,7 @@ import { Prisma } from "@prisma/client";
 import { addDays, isBefore, startOfDay } from "date-fns";
 import vatService from "../services/vat.service";
 import pdfService from "../services/pdf-pdfkit.service";
-import { ebarimtService } from "../services/ebarimt.service";
+import ebarimtService from "../services/ebarimt.service";
 
 export const createOrder = async (
   req: Request,
@@ -26,35 +26,35 @@ export const createOrder = async (
     } = req.body;
 
     if (!items || items.length === 0) {
-      throw new AppError("Order must contain at least one item", 400);
+      throw new AppError(req.t.orders.noItems, 400);
     }
 
     // Validate credit terms if payment method is Credit
     if (paymentMethod === "Credit" && !creditTermDays) {
-      throw new AppError(
-        "Credit term days are required for credit payments",
-        400
-      );
+      throw new AppError("Зээлийн төлбөрт хугацаа заах шаардлагатай", 400);
     }
 
     // Validate orderType
     if (!["Market", "Store"].includes(orderType)) {
-      throw new AppError("Order type must be Market or Store", 400);
+      throw new AppError(
+        "Захиалгын төрөл зөвхөн Зах эсвэл Дэлгүүр байх ёстой",
+        400
+      );
     }
 
     // Market order validation: must have future delivery date
     if (orderType === "Market") {
       if (!deliveryDate) {
-        throw new AppError("Market orders require a delivery date", 400);
+        throw new AppError(
+          "Захын захиалгад хүргэлтийн огноо заавал шаардлагатай",
+          400
+        );
       }
       const deliveryDateObj = startOfDay(new Date(deliveryDate));
       const today = startOfDay(new Date());
 
       if (!isBefore(today, deliveryDateObj)) {
-        throw new AppError(
-          "Market orders must have a delivery date in the future (next day or later)",
-          400
-        );
+        throw new AppError(req.t.orders.invalidDeliveryDate, 400);
       }
     }
 
@@ -66,7 +66,7 @@ export const createOrder = async (
       });
 
       if (!customer) {
-        throw new AppError("Customer not found", 404);
+        throw new AppError(req.t.customers.notFound, 404);
       }
 
       // Validate stock availability and calculate total
@@ -80,14 +80,14 @@ export const createOrder = async (
 
         if (!product) {
           throw new AppError(
-            `Product with ID ${item.productId} not found`,
+            `ID ${item.productId} дугаартай бараа олдсонгүй`,
             404
           );
         }
 
         if (product.stockQuantity < item.quantity) {
           throw new AppError(
-            `Insufficient stock for product ${product.nameMongolian}. Available: ${product.stockQuantity}, Requested: ${item.quantity}`,
+            `${product.nameMongolian} барааны үлдэгдэл хүрэлцэхгүй байна. Үлдэгдэл: ${product.stockQuantity}, Захиалсан: ${item.quantity}`,
             400
           );
         }
@@ -118,7 +118,7 @@ export const createOrder = async (
 
         if (totalBatchQuantity < item.quantity) {
           throw new AppError(
-            `Insufficient non-expired batch inventory for product ${product.nameMongolian}. Available: ${totalBatchQuantity}, Requested: ${item.quantity}`,
+            `${product.nameMongolian} барааны идэвхтэй багцын үлдэгдэл хүрэлцэхгүй. Үлдэгдэл: ${totalBatchQuantity}, Захиалсан: ${item.quantity}`,
             400
           );
         }
@@ -155,7 +155,7 @@ export const createOrder = async (
 
         if (!unitPrice) {
           throw new AppError(
-            `Price not set for product ${product.nameMongolian}`,
+            `${product.nameMongolian} барааны үнэ тохируулаагүй байна`,
             400
           );
         }
@@ -288,53 +288,67 @@ export const createOrder = async (
       `New ${order.orderType} order created: Order ID ${order.id}, Subtotal: ${order.subtotalAmount}, VAT: ${order.vatAmount}, Total: ${order.totalAmount}, Payment: ${paymentMethod}`
     );
 
-    // Register with e-Barimt for Store orders only
-    if (order.orderType === "Store") {
+    // Register with E-Barimt for Store orders only
+    if (order.orderType === "Store" && ebarimtService.isServiceEnabled()) {
       try {
         // Generate unique order number if not exists
-        const orderNumber = `ORD${order.id}${Date.now()}`;
-        
-        // Update order with order number before e-Barimt registration
+        const orderNumber = `ORD-${order.id.toString().padStart(6, "0")}`;
+
+        // Update order with order number before E-Barimt registration
         await prisma.order.update({
           where: { id: order.id },
           data: { orderNumber },
         });
 
-        // Prepare e-Barimt data
-        const ebarimtData = ebarimtService.prepareOrderData({
-          ...order,
+        // Register with E-Barimt
+        const ebarimtResult = await ebarimtService.registerReceipt({
           orderNumber,
+          customer: {
+            name: order.customer.name,
+            registrationNumber: order.customer.registrationNumber,
+          },
+          items: order.orderItems.map((item) => ({
+            productName: item.product.nameMongolian,
+            barcode: item.product.barcode || undefined,
+            quantity: item.quantity,
+            unitPrice: parseFloat(item.unitPrice.toString()),
+            total: parseFloat(item.unitPrice.toString()) * item.quantity,
+          })),
+          subtotal: parseFloat(order.subtotalAmount?.toString() || "0"),
+          vat: parseFloat(order.vatAmount?.toString() || "0"),
+          total: parseFloat(order.totalAmount?.toString() || "0"),
+          paymentMethod: order.paymentMethod,
         });
 
-        // Register with e-Barimt
-        const ebarimtResult = await ebarimtService.registerBill(ebarimtData);
-
-        if (ebarimtResult.success) {
-          // Update order with e-Barimt information
+        if (ebarimtResult.success && ebarimtResult.data) {
+          // Update order with E-Barimt information
           await prisma.order.update({
             where: { id: order.id },
             data: {
-              ebarimtId: ebarimtResult.id,
-              ebarimtBillId: ebarimtResult.billId,
-              ebarimtLottery: ebarimtResult.lottery,
-              ebarimtQrData: ebarimtResult.qrData,
+              ebarimtId: ebarimtResult.data.id,
+              ebarimtBillId: ebarimtResult.data.billId,
+              ebarimtLottery: ebarimtResult.data.lottery,
+              ebarimtQrData: ebarimtResult.data.qrData,
               ebarimtRegistered: true,
-              ebarimtDate: new Date(),
+              ebarimtDate: new Date(ebarimtResult.data.date),
             },
           });
 
           logger.info(
-            `Order ${order.id} registered with e-Barimt. Lottery: ${ebarimtResult.lottery}, Bill ID: ${ebarimtResult.billId}`
+            `Order ${order.id} registered with E-Barimt. ДДТД: ${ebarimtResult.data.billId}, Lottery: ${ebarimtResult.data.lottery}`
           );
         } else {
           logger.error(
-            `Failed to register order ${order.id} with e-Barimt: ${ebarimtResult.message}`
+            `Failed to register order ${order.id} with E-Barimt: ${ebarimtResult.message}`
           );
-          // Note: Order is still created even if e-Barimt registration fails
+          // Note: Order is still created even if E-Barimt registration fails
           // Can be retried later using manual endpoint
         }
       } catch (error) {
-        logger.error(`Error during e-Barimt registration for order ${order.id}:`, error);
+        logger.error(
+          `Error during E-Barimt registration for order ${order.id}:`,
+          error
+        );
         // Continue - order is already created
       }
     }
@@ -423,10 +437,17 @@ export const getAllOrders = async (
       prisma.order.count({ where }),
     ]);
 
+    // Add aliases for frontend compatibility
+    const ordersWithAliases = orders.map((order) => ({
+      ...order,
+      createdBy: order.agent, // Alias for frontend
+      createdAt: order.orderDate, // Alias for frontend (orderDate as createdAt)
+    }));
+
     res.json({
       status: "success",
       data: {
-        orders,
+        orders: ordersWithAliases,
         pagination: {
           page,
           limit,
@@ -463,7 +484,7 @@ export const getOrderById = async (
     });
 
     if (!order) {
-      throw new AppError("Order not found", 404);
+      throw new AppError(req.t.orders.notFound, 404);
     }
 
     // Sales agents can only see their own orders
@@ -471,12 +492,19 @@ export const getOrderById = async (
       authReq.user?.role === "SalesAgent" &&
       order.agentId !== authReq.user.userId
     ) {
-      throw new AppError("You do not have access to this order", 403);
+      throw new AppError(req.t.auth.forbidden, 403);
     }
+
+    // Add aliases for frontend compatibility
+    const orderWithAliases = {
+      ...order,
+      createdBy: order.agent, // Alias for frontend
+      createdAt: order.orderDate, // Alias for frontend (orderDate as createdAt)
+    };
 
     res.json({
       status: "success",
-      data: { order },
+      data: { order: orderWithAliases },
     });
   } catch (error) {
     next(error);
@@ -497,7 +525,7 @@ export const updateOrderStatus = async (
     });
 
     if (!order) {
-      throw new AppError("Order not found", 404);
+      throw new AppError(req.t.orders.notFound, 404);
     }
 
     const updatedOrder = await prisma.order.update({
@@ -531,6 +559,7 @@ export const getOrderReceipt = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    const authReq = req as AuthRequest;
     const { id } = req.params;
 
     const order = await prisma.order.findUnique({
@@ -552,6 +581,7 @@ export const getOrderReceipt = async (
                 nameMongolian: true,
                 nameEnglish: true,
                 productCode: true,
+                barcode: true,
               },
             },
           },
@@ -561,7 +591,15 @@ export const getOrderReceipt = async (
     });
 
     if (!order) {
-      throw new AppError("Order not found", 404);
+      throw new AppError(req.t.orders.notFound, 404);
+    }
+
+    // Sales agents can only see their own orders
+    if (
+      authReq.user?.role === "SalesAgent" &&
+      order.agentId !== authReq.user.userId
+    ) {
+      throw new AppError(req.t.auth.forbidden, 403);
     }
 
     // Format receipt data for frontend/printing
@@ -583,6 +621,7 @@ export const getOrderReceipt = async (
         productId: item.product.id,
         productName: item.product.nameMongolian,
         productCode: item.product.productCode,
+        barcode: item.product.barcode || undefined,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         total: parseFloat(item.unitPrice.toString()) * item.quantity,
@@ -620,6 +659,7 @@ export const prepareOrderDocument = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    const authReq = req as AuthRequest;
     const { id } = req.params;
 
     const order = await prisma.order.findUnique({
@@ -644,7 +684,15 @@ export const prepareOrderDocument = async (
     });
 
     if (!order) {
-      throw new AppError("Order not found", 404);
+      throw new AppError(req.t.orders.notFound, 404);
+    }
+
+    // Sales agents can only see their own orders
+    if (
+      authReq.user?.role === "SalesAgent" &&
+      order.agentId !== authReq.user.userId
+    ) {
+      throw new AppError(req.t.auth.forbidden, 403);
     }
 
     // Prepare comprehensive document data for printing
@@ -770,6 +818,7 @@ export const getOrderReceiptPDF = async (
                 nameMongolian: true,
                 nameEnglish: true,
                 productCode: true,
+                barcode: true,
               },
             },
           },
@@ -779,20 +828,20 @@ export const getOrderReceiptPDF = async (
     });
 
     if (!order) {
-      throw new AppError("Order not found", 404);
+      throw new AppError(req.t.orders.notFound, 404);
     }
 
     // Validate that order has required data for PDF generation
     if (!order.customer) {
-      throw new AppError("Order customer data is missing", 500);
+      throw new AppError("Захиалгын харилцагчийн мэдээлэл дутуу байна", 500);
     }
 
     if (!order.agent) {
-      throw new AppError("Order agent data is missing", 500);
+      throw new AppError("Захиалгын борлуулагчийн мэдээлэл дутуу байна", 500);
     }
 
     if (!order.orderItems || order.orderItems.length === 0) {
-      throw new AppError("Order has no items", 500);
+      throw new AppError(req.t.orders.noItems, 500);
     }
 
     // Sales agents can only see their own orders
@@ -800,13 +849,14 @@ export const getOrderReceiptPDF = async (
       authReq.user?.role === "SalesAgent" &&
       order.agentId !== authReq.user.userId
     ) {
-      throw new AppError("You do not have access to this order", 403);
+      throw new AppError(req.t.auth.forbidden, 403);
     }
 
     // Prepare data for PDF generation
     const receiptData = {
       orderId: order.id,
-      orderNumber: order.orderNumber || `ORD-${order.id.toString().padStart(6, "0")}`,
+      orderNumber:
+        order.orderNumber || `ORD-${order.id.toString().padStart(6, "0")}`,
       orderDate: order.orderDate,
       orderType: order.orderType,
       status: order.status,
@@ -822,6 +872,7 @@ export const getOrderReceiptPDF = async (
       items: order.orderItems.map((item) => ({
         productName: item.product.nameMongolian,
         productCode: item.product.productCode || "N/A",
+        barcode: item.product.barcode || undefined,
         quantity: item.quantity,
         unitPrice: parseFloat(item.unitPrice.toString()),
         total: parseFloat(item.unitPrice.toString()) * item.quantity,

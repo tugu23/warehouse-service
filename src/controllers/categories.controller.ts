@@ -19,7 +19,7 @@ export const createCategory = async (
     });
 
     if (existingCategory) {
-      throw new AppError("Category with this name already exists", 400);
+      throw new AppError(req.t.categories.nameExists, 400);
     }
 
     const category = await prisma.category.create({
@@ -118,7 +118,7 @@ export const getCategoryById = async (
     });
 
     if (!category) {
-      throw new AppError("Category not found", 404);
+      throw new AppError(req.t.categories.notFound, 404);
     }
 
     res.json({
@@ -144,7 +144,7 @@ export const updateCategory = async (
     });
 
     if (!category) {
-      throw new AppError("Category not found", 404);
+      throw new AppError(req.t.categories.notFound, 404);
     }
 
     // Check if new name already exists
@@ -166,7 +166,7 @@ export const updateCategory = async (
       });
 
       if (existingCategory) {
-        throw new AppError("Category with this name already exists", 400);
+        throw new AppError(req.t.categories.nameExists, 400);
       }
     }
 
@@ -206,13 +206,13 @@ export const deleteCategory = async (
     });
 
     if (!category) {
-      throw new AppError("Category not found", 404);
+      throw new AppError(req.t.categories.notFound, 404);
     }
 
     // Check if category has products
     if (category.products.length > 0) {
       throw new AppError(
-        "Cannot delete category with associated products. Please reassign or delete the products first.",
+        "Бараатай ангиллыг устгах боломжгүй. Эхлээд барааг өөр ангилалд шилжүүлнэ үү.",
         400
       );
     }

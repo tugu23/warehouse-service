@@ -18,7 +18,7 @@ export const createEmployee = async (
     });
 
     if (existingEmployee) {
-      throw new AppError("Employee with this email already exists", 400);
+      throw new AppError(req.t.employees.emailExists, 400);
     }
 
     // Find role
@@ -27,7 +27,7 @@ export const createEmployee = async (
     });
 
     if (!role) {
-      throw new AppError("Invalid role specified", 400);
+      throw new AppError("Буруу эрх сонгосон байна", 400);
     }
 
     // Validate store if provided
@@ -37,11 +37,11 @@ export const createEmployee = async (
       });
 
       if (!store) {
-        throw new AppError("Invalid store specified", 400);
+        throw new AppError("Буруу дэлгүүр сонгосон байна", 400);
       }
 
       if (!store.isActive) {
-        throw new AppError("Cannot assign employee to inactive store", 400);
+        throw new AppError("Идэвхгүй дэлгүүрт ажилтан томилох боломжгүй", 400);
       }
     }
 
@@ -149,7 +149,7 @@ export const getEmployeeById = async (
     });
 
     if (!employee) {
-      throw new AppError("Employee not found", 404);
+      throw new AppError(req.t.employees.notFound, 404);
     }
 
     res.json({
@@ -185,7 +185,7 @@ export const updateEmployee = async (
     });
 
     if (!employee) {
-      throw new AppError("Employee not found", 404);
+      throw new AppError(req.t.employees.notFound, 404);
     }
 
     const updateData: any = {};
@@ -200,7 +200,7 @@ export const updateEmployee = async (
       });
 
       if (!role) {
-        throw new AppError("Invalid role specified", 400);
+        throw new AppError("Буруу эрх сонгосон байна", 400);
       }
 
       updateData.roleId = role.id;
@@ -246,7 +246,7 @@ export const deleteEmployee = async (
     });
 
     if (!employee) {
-      throw new AppError("Employee not found", 404);
+      throw new AppError(req.t.employees.notFound, 404);
     }
 
     // Soft delete by setting isActive to false

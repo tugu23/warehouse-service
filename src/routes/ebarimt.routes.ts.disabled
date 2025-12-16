@@ -32,25 +32,22 @@ router.use(authMiddleware);
  *       200:
  *         description: E-Barimt system status
  */
-router.get(
-  "/status",
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const result = await ebarimtService.checkStatus();
-
-      res.json({
-        status: result.success ? "success" : "error",
-        data: {
-          online: result.online,
-          message: result.message,
-          timestamp: new Date().toISOString(),
-        },
-      });
-    } catch (error) {
-      next(error);
-    }
+router.get("/status", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await ebarimtService.checkStatus();
+    
+    res.json({
+      status: result.success ? "success" : "error",
+      data: {
+        online: result.online,
+        message: result.message,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
   }
-);
+});
 
 /**
  * @swagger
@@ -79,9 +76,7 @@ router.get(
 router.post(
   "/register/:orderId",
   checkRole(["Admin", "Manager"]),
-  validate([
-    param("orderId").isInt().withMessage("Valid order ID is required"),
-  ]),
+  validate([param("orderId").isInt().withMessage("Valid order ID is required")]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { orderId } = req.params;
@@ -113,10 +108,7 @@ router.post(
 
       // Only Store orders need e-Barimt
       if (order.orderType !== "Store") {
-        throw new AppError(
-          "Only Store orders can be registered with e-Barimt",
-          400
-        );
+        throw new AppError("Only Store orders can be registered with e-Barimt", 400);
       }
 
       // Generate order number if not exists
@@ -245,9 +237,7 @@ router.get(
 router.post(
   "/return/:orderId",
   checkRole(["Admin", "Manager"]),
-  validate([
-    param("orderId").isInt().withMessage("Valid order ID is required"),
-  ]),
+  validate([param("orderId").isInt().withMessage("Valid order ID is required")]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { orderId } = req.params;
@@ -281,9 +271,7 @@ router.post(
           },
         });
 
-        logger.info(
-          `E-Barimt bill returned for order ${orderId}: ${result.id}`
-        );
+        logger.info(`E-Barimt bill returned for order ${orderId}: ${result.id}`);
 
         res.json({
           status: "success",
@@ -358,3 +346,4 @@ router.get(
 );
 
 export default router;
+

@@ -7,6 +7,7 @@ import * as fs from "fs";
 interface ReceiptItem {
   productName: string;
   productCode: string;
+  barcode?: string;
   quantity: number;
   unitPrice: number;
   total: number;
@@ -53,18 +54,28 @@ class PDFKitService {
   private readonly COMPANY_PHONES = ["70121128", "88048350", "89741277"];
   private readonly COMPANY_TIN = "5317878";
 
-  // A5 dimensions in points (72 points = 1 inch, A5 = 148mm x 210mm)
-  private readonly PAGE_WIDTH = 419.53; // 148mm in points
-  private readonly PAGE_HEIGHT = 595.28; // 210mm in points
-  private readonly MARGIN = 28.35; // 10mm in points
-  private readonly CONTENT_WIDTH = this.PAGE_WIDTH - 2 * this.MARGIN;
+  // A5 dimensions in points (72 points = 1 inch, A5 Landscape = 210mm x 148mm)
+  // A4 dimensions in points (A4 Landscape = 297mm x 210mm)
+  private readonly A5_WIDTH = 595.28; // 210mm in points (landscape)
+  private readonly A5_HEIGHT = 419.53; // 148mm in points (landscape)
+  private readonly A4_WIDTH = 841.89; // 297mm in points (landscape)
+  private readonly A4_HEIGHT = 595.28; // 210mm in points (landscape)
+  private readonly MARGIN = 20; // Reduced margin for more space
 
   async generateOrderReceiptPDF(data: ReceiptData): Promise<Buffer> {
     return new Promise(async (resolve, reject) => {
       try {
+        // Determine page size based on number of items
+        // If more than 12 items, use A4, otherwise use A5
+        // Increased from 8 to 12 due to optimized compact layout
+        const useA4 = data.items.length > 12;
+        const pageWidth = useA4 ? this.A4_WIDTH : this.A5_WIDTH;
+        const pageHeight = useA4 ? this.A4_HEIGHT : this.A5_HEIGHT;
+        const contentWidth = pageWidth - 2 * this.MARGIN;
+
         // Create PDF document with UTF-8 encoding
         const doc = new PDFDocument({
-          size: [this.PAGE_WIDTH, this.PAGE_HEIGHT],
+          size: [pageWidth, pageHeight],
           margins: {
             top: this.MARGIN,
             bottom: this.MARGIN,
@@ -75,50 +86,47 @@ class PDFKitService {
           autoFirstPage: true,
         });
 
-        // Register Roboto fonts for Cyrillic support
-        try {
-          // Determine font path based on environment
-          let fontPath: string;
-          let regularFont: string;
-          let boldFont: string;
-          
-          // Check if running from dist (production) or src (development)
-          if (__dirname.includes('/dist/')) {
-            // Production: fonts are in dist/fonts/
-            fontPath = path.join(__dirname, "../fonts");
-            regularFont = path.join(fontPath, "Roboto-Regular.ttf");
-            boldFont = path.join(fontPath, "Roboto-Bold.ttf");
-          } else {
-            // Development: fonts are in src/fonts/
-            fontPath = path.join(__dirname, "../fonts");
-            regularFont = path.join(fontPath, "Roboto-Regular.ttf");
-            boldFont = path.join(fontPath, "Roboto-Bold.ttf");
-          }
-          
-          console.log("=== Font Loading Debug ===");
-          console.log("__dirname:", __dirname);
-          console.log("Font path:", fontPath);
-          console.log("Regular font:", regularFont);
-          console.log("Bold font:", boldFont);
-          console.log("Regular font exists:", fs.existsSync(regularFont));
-          console.log("Bold font exists:", fs.existsSync(boldFont));
-          
-          if (fs.existsSync(regularFont) && fs.existsSync(boldFont)) {
-            doc.registerFont("Roboto", regularFont);
-            doc.registerFont("Roboto-Bold", boldFont);
-            doc.font("Roboto");
-            console.log("✅ Fonts registered successfully!");
-          } else {
-            console.error("❌ Font files not found!");
-            console.error("Tried paths:");
-            console.error("  Regular:", regularFont);
-            console.error("  Bold:", boldFont);
-            doc.font("Courier");
-          }
-        } catch (fontError) {
-          console.error("❌ Font loading error:", fontError);
-          doc.font("Courier");
+        // Store page dimensions for use in other methods
+        (doc as any)._pageWidth = pageWidth;
+        (doc as any)._pageHeight = pageHeight;
+        (doc as any)._contentWidth = contentWidth;
+        (doc as any)._margin = this.MARGIN;
+
+        // Store font paths for later use
+        // Determine font path based on environment
+        let fontPath: string;
+        let regularFontPath: string;
+        let boldFontPath: string;
+
+        // Check if running from dist (production) or src (development)
+        if (__dirname.includes("/dist/")) {
+          // Production: fonts are in dist/fonts/
+          fontPath = path.join(__dirname, "../fonts");
+        } else {
+          // Development: fonts are in src/fonts/
+          fontPath = path.join(__dirname, "../fonts");
         }
+
+        regularFontPath = path.join(fontPath, "Roboto-Regular.ttf");
+        boldFontPath = path.join(fontPath, "Roboto-Bold.ttf");
+
+        console.log("=== Font Loading Debug ===");
+        console.log("__dirname:", __dirname);
+        console.log("Font path:", fontPath);
+        console.log("Regular font:", regularFontPath);
+        console.log("Bold font:", boldFontPath);
+        console.log("Regular font exists:", fs.existsSync(regularFontPath));
+        console.log("Bold font exists:", fs.existsSync(boldFontPath));
+
+        // Store paths in doc for later use instead of pre-registering
+        (doc as any)._fontPaths = {
+          regular: regularFontPath,
+          bold: boldFontPath,
+        };
+
+        // Register fonts with names so we can use them easily
+        doc.registerFont("Roboto", regularFontPath);
+        doc.registerFont("Roboto-Bold", boldFontPath);
 
         // Collect PDF data
         const chunks: Buffer[] = [];
@@ -131,14 +139,10 @@ class PDFKitService {
 
         // Add content
         let yPos = this.MARGIN;
-        yPos = this.addHeader(doc, yPos);
-        yPos = this.addGeneralInfo(doc, data, yPos);
-        yPos = this.addSellerInfo(doc, data, yPos);
-        yPos = this.addBuyerInfo(doc, data, yPos);
-        yPos = this.addStoreInfo(doc, yPos);
+        yPos = this.addHeader(doc, data, yPos);
+        yPos = this.addAllInfoInColumns(doc, data, yPos);
         yPos = this.addItemsTable(doc, data, yPos);
-        yPos = this.addVATInfo(doc, data, yPos);
-        yPos = await this.addQRCodeAndLottery(doc, data, qrCodeDataURL, yPos);
+        yPos = await this.addVATAndQRInColumns(doc, data, qrCodeDataURL, yPos);
         this.addFooter(doc);
 
         // Finalize PDF
@@ -149,450 +153,434 @@ class PDFKitService {
     });
   }
 
-  private addHeader(doc: PDFKit.PDFDocument, yPos: number): number {
-    // Main title
+  private setFont(
+    doc: PDFKit.PDFDocument,
+    style: "bold" | "normal" = "normal"
+  ): void {
+    const fontPaths = (doc as any)._fontPaths;
+    if (fontPaths) {
+      try {
+        const fontPath = style === "bold" ? fontPaths.bold : fontPaths.regular;
+        doc.font(fontPath);
+      } catch (err) {
+        console.error("Error loading font:", err);
+        doc.font("Courier");
+      }
+    } else {
+      doc.font("Courier");
+    }
+  }
+
+  private addHeader(
+    doc: PDFKit.PDFDocument,
+    data: ReceiptData,
+    yPos: number
+  ): number {
+    const pageWidth = (doc as any)._pageWidth;
+    const contentWidth = (doc as any)._contentWidth;
+
+    // Date on top left corner
+    this.setFont(doc, "normal");
     doc
-      .fontSize(14)
-      .font("Roboto-Bold")
-      .text("Агуулахын бараа бүртгэлийн систем", this.MARGIN, yPos, {
-        width: this.CONTENT_WIDTH,
+      .fontSize(7)
+      .text(this.formatDateMongolian(data.orderDate), this.MARGIN, yPos);
+
+    yPos += 10;
+
+    // Simple header with company info - no unnecessary titles
+    this.setFont(doc, "bold");
+    doc.fontSize(10).text(this.COMPANY_NAME, this.MARGIN, yPos, {
+      width: contentWidth,
+      align: "center",
+    });
+
+    yPos += 12;
+
+    this.setFont(doc, "normal");
+    doc.fontSize(7).text(this.COMPANY_ADDRESS, this.MARGIN, yPos, {
+      width: contentWidth,
+      align: "center",
+    });
+
+    yPos += 10;
+
+    doc
+      .fontSize(7)
+      .text(`Утас: ${this.COMPANY_PHONES.join(", ")}`, this.MARGIN, yPos, {
+        width: contentWidth,
         align: "center",
       });
 
-    yPos += 20;
-
-    // Subtitle
-    doc
-      .fontSize(10)
-      .font("Roboto")
-      .text("E-Barimt Receipt / Төлбөрийн баримт", this.MARGIN, yPos, {
-        width: this.CONTENT_WIDTH,
-        align: "center",
-      });
-
-    yPos += 15;
+    yPos += 8;
 
     // Divider line
     doc
       .moveTo(this.MARGIN, yPos)
-      .lineTo(this.PAGE_WIDTH - this.MARGIN, yPos)
+      .lineTo(pageWidth - this.MARGIN, yPos)
       .stroke();
 
-    return yPos + 15;
+    return yPos + 8;
   }
 
-  private addGeneralInfo(doc: PDFKit.PDFDocument, data: ReceiptData, yPos: number): number {
-    // Section header
-    doc
-      .fontSize(9)
-      .font("Roboto-Bold")
-      .text("1. Баримтын ерөнхий мэдээлэл", this.MARGIN, yPos);
+  private addAllInfoInColumns(
+    doc: PDFKit.PDFDocument,
+    data: ReceiptData,
+    yPos: number
+  ): number {
+    const pageWidth = (doc as any)._pageWidth;
+    const contentWidth = (doc as any)._contentWidth;
+    const startY = yPos;
+    const col1X = this.MARGIN;
+    const col2X = this.MARGIN + contentWidth / 3;
+    const col3X = this.MARGIN + (contentWidth * 2) / 3;
+    const colWidth = contentWidth / 3 - 10;
 
-    yPos += 15;
+    // Column 1: Баримтын мэдээлэл
+    let y1 = startY;
+    doc.fontSize(7).font("Roboto-Bold");
+    doc.text("Баримтын мэдээлэл", col1X, y1, { width: colWidth });
+    y1 += 10;
+    doc.fontSize(6.5);
 
-    const labelX = this.MARGIN + 7;
-    const valueX = this.MARGIN + 140;
-
-    doc.fontSize(8);
+    const labelWidth = 45;
+    const valueX = col1X + labelWidth;
 
     // Receipt number
-    doc
-      .font("Roboto-Bold")
-      .text("Зарлагын падаан №:", labelX, yPos, { continued: false });
-    doc
-      .font("Roboto")
-      .text(data.orderNumber || "N/A", valueX, yPos);
+    doc.font("Roboto-Bold").text("Падаан №:", col1X, y1);
+    doc.font("Roboto").text(data.orderNumber || "N/A", valueX, y1);
+    y1 += 9;
 
-    yPos += 12;
-
-    // DDTD
-    if (data.ebarimtBillId) {
-      doc.font("Roboto-Bold").text("ДДТД:", labelX, yPos);
-      doc.font("Roboto").text(data.ebarimtBillId, valueX, yPos);
-      yPos += 12;
-    }
+    // ДДТД - IMPORTANT
+    doc.font("Roboto-Bold").text("ДДТД:", col1X, y1);
+    doc.font("Roboto").text(data.ebarimtBillId || "Бүртгэлгүй", valueX, y1);
+    y1 += 9;
 
     // TIN
-    doc.font("Roboto-Bold").text("ТТД:", labelX, yPos);
-    doc.font("Roboto").text(this.COMPANY_TIN, valueX, yPos);
-    yPos += 12;
-
-    // Registration date
-    if (data.ebarimtDate) {
-      doc
-        .font("Roboto-Bold")
-        .text("Баримт бүртгэгдсэн огноо:", labelX, yPos);
-      doc
-        .font("Roboto")
-        .text(this.formatDateMongolian(data.ebarimtDate), valueX, yPos);
-      yPos += 12;
-    }
-
-    // Order date
-    doc.font("Roboto-Bold").text("Бараа олгосон огноо:", labelX, yPos);
-    doc
-      .font("Roboto")
-      .text(this.formatDateMongolian(data.orderDate), valueX, yPos);
-    yPos += 12;
+    doc.font("Roboto-Bold").text("ТТД:", col1X, y1);
+    doc.font("Roboto").text(this.COMPANY_TIN, valueX, y1);
+    y1 += 9;
 
     // Payment method
-    doc.font("Roboto-Bold").text("Төлбөрийн хэлбэр:", labelX, yPos);
+    doc.font("Roboto-Bold").text("Төлбөр:", col1X, y1);
     doc
       .font("Roboto")
-      .text(this.translatePaymentMethod(data.paymentMethod), valueX, yPos);
+      .text(this.translatePaymentMethod(data.paymentMethod), valueX, y1);
 
-    yPos += 15;
+    // Column 2: Борлуулагчийн мэдээлэл
+    let y2 = startY;
+    doc.fontSize(7).font("Roboto-Bold");
+    doc.text("Борлуулагч", col2X, y2, { width: colWidth });
+    y2 += 10;
+    doc.fontSize(6.5);
 
-    // Divider
-    doc
-      .moveTo(this.MARGIN, yPos)
-      .lineTo(this.PAGE_WIDTH - this.MARGIN, yPos)
-      .strokeOpacity(0.3)
-      .stroke()
-      .strokeOpacity(1);
-
-    return yPos + 12;
-  }
-
-  private addSellerInfo(doc: PDFKit.PDFDocument, data: ReceiptData, yPos: number): number {
-    doc
-      .fontSize(9)
-      .font("Roboto-Bold")
-      .text("2. Борлуулагчийн мэдээлэл", this.MARGIN, yPos);
-
-    yPos += 15;
-
-    const labelX = this.MARGIN + 7;
-    const valueX = this.MARGIN + 30;
-
-    doc.fontSize(8);
+    const labelWidth2 = 28;
+    const valueX2 = col2X + labelWidth2;
 
     // Seller name
-    doc.font("Roboto-Bold").text("Нэр:", labelX, yPos);
-    doc.font("Roboto").text(data.agent.name || "N/A", valueX, yPos);
-    yPos += 12;
+    doc.font("Roboto-Bold").text("Нэр:", col2X, y2);
+    doc.font("Roboto").text(data.agent.name || "N/A", valueX2, y2);
+    y2 += 9;
 
     // Seller phone
     if (data.agent.phoneNumber) {
-      doc.font("Roboto-Bold").text("Утас:", labelX, yPos);
-      doc.font("Roboto").text(data.agent.phoneNumber, valueX, yPos);
-      yPos += 12;
+      doc.font("Roboto-Bold").text("Утас:", col2X, y2);
+      doc.font("Roboto").text(data.agent.phoneNumber, valueX2, y2);
+      y2 += 9;
     }
 
-    yPos += 3;
+    // Column 3: Худалдан авагчийн мэдээлэл
+    let y3 = startY;
+    doc.fontSize(7).font("Roboto-Bold");
+    doc.text("Худалдан авагч", col3X, y3, { width: colWidth });
+    y3 += 10;
+    doc.fontSize(6.5);
 
-    // Divider
-    doc
-      .moveTo(this.MARGIN, yPos)
-      .lineTo(this.PAGE_WIDTH - this.MARGIN, yPos)
-      .strokeOpacity(0.3)
-      .stroke()
-      .strokeOpacity(1);
-
-    return yPos + 12;
-  }
-
-  private addBuyerInfo(doc: PDFKit.PDFDocument, data: ReceiptData, yPos: number): number {
-    doc
-      .fontSize(9)
-      .font("Roboto-Bold")
-      .text("3. Худалдан авагчийн мэдээлэл", this.MARGIN, yPos);
-
-    yPos += 15;
-
-    const labelX = this.MARGIN + 7;
-    const valueX = this.MARGIN + 30;
-
-    doc.fontSize(8);
+    const labelWidth3 = 28;
+    const valueX3 = col3X + labelWidth3;
 
     // Buyer name
-    doc.font("Roboto-Bold").text("Нэр:", labelX, yPos);
-    doc.font("Roboto").text(data.customer.name || "N/A", valueX, yPos);
-    yPos += 12;
+    doc.font("Roboto-Bold").text("Нэр:", col3X, y3);
+    doc.font("Roboto").text(data.customer.name || "N/A", valueX3, y3);
+    y3 += 9;
 
     // Buyer phone
     if (data.customer.phoneNumber) {
-      doc.font("Roboto-Bold").text("Утас:", labelX, yPos);
-      doc.font("Roboto").text(data.customer.phoneNumber, valueX, yPos);
-      yPos += 12;
+      doc.font("Roboto-Bold").text("Утас:", col3X, y3);
+      doc.font("Roboto").text(data.customer.phoneNumber, valueX3, y3);
+      y3 += 9;
     }
 
-    yPos += 3;
+    // Find the maximum Y position
+    const maxY = Math.max(y1, y2, y3);
+    yPos = maxY + 8;
 
     // Divider
     doc
       .moveTo(this.MARGIN, yPos)
-      .lineTo(this.PAGE_WIDTH - this.MARGIN, yPos)
+      .lineTo(pageWidth - this.MARGIN, yPos)
       .strokeOpacity(0.3)
       .stroke()
       .strokeOpacity(1);
 
-    return yPos + 12;
+    return yPos + 8;
   }
 
-  private addStoreInfo(doc: PDFKit.PDFDocument, yPos: number): number {
-    doc
-      .fontSize(9)
-      .font("Roboto-Bold")
-      .text("4. Дэлгүүр / Байгууллагын мэдээлэл", this.MARGIN, yPos);
+  private addItemsTable(
+    doc: PDFKit.PDFDocument,
+    data: ReceiptData,
+    yPos: number
+  ): number {
+    const pageWidth = (doc as any)._pageWidth;
+    const contentWidth = (doc as any)._contentWidth;
 
-    yPos += 15;
-
-    const labelX = this.MARGIN + 7;
-    const valueX = this.MARGIN + 30;
-
-    doc.fontSize(8);
-
-    // Store name
-    doc.font("Roboto-Bold").text("Нэр:", labelX, yPos);
-    doc.font("Roboto").text(this.COMPANY_NAME, valueX, yPos);
-    yPos += 12;
-
-    // Address
-    doc.font("Roboto-Bold").text("Хаяг:", labelX, yPos);
-    doc.font("Roboto").text(this.COMPANY_ADDRESS, valueX, yPos, {
-      width: this.CONTENT_WIDTH - (valueX - this.MARGIN),
-    });
-    yPos += 20;
-
-    // Phones
-    doc.font("Roboto-Bold").text("Утас:", labelX, yPos);
-    doc.font("Roboto").text(this.COMPANY_PHONES.join(", "), valueX, yPos);
-    yPos += 15;
-
-    // Divider
-    doc
-      .moveTo(this.MARGIN, yPos)
-      .lineTo(this.PAGE_WIDTH - this.MARGIN, yPos)
-      .strokeOpacity(0.3)
-      .stroke()
-      .strokeOpacity(1);
-
-    return yPos + 12;
-  }
-
-  private addItemsTable(doc: PDFKit.PDFDocument, data: ReceiptData, yPos: number): number {
-    doc
-      .fontSize(9)
-      .font("Roboto-Bold")
-      .text("5. Худалдан авсан барааны жагсаалт", this.MARGIN, yPos);
-
-    yPos += 10;
-
-    // Table settings
+    // Table settings - optimized column widths
     const tableTop = yPos;
     const col1X = this.MARGIN;
-    const col2X = col1X + 22;
-    const col3X = col2X + 125;
-    const col4X = col3X + 70;
-    const col5X = col4X + 35;
-    const col6X = col5X + 55;
-    const rowHeight = 18;
+    const numWidth = 18; // № column width
+    const col2X = col1X + numWidth; // №
+
+    // Calculate optimal widths based on content
+    const nameWidth = contentWidth * 0.28; // Барааны нэр - reduced from 0.35
+    const barcodeWidth = contentWidth * 0.14; // Баркод - reduced from 0.18
+    const qtyWidth = contentWidth * 0.1; // Тоо/Ширхэг
+    const unitPriceWidth = contentWidth * 0.14; // Нэгж үнэ
+    const totalPriceWidth = contentWidth * 0.16; // Нийт үнэ - increased
+
+    const col3X = col2X + nameWidth;
+    const col4X = col3X + barcodeWidth;
+    const col5X = col4X + qtyWidth;
+    const col6X = col5X + unitPriceWidth;
+    const rowHeight = 14;
 
     // Table header
-    doc.fontSize(7).font("Roboto-Bold");
+    doc.fontSize(6.5).font("Roboto-Bold");
 
     // Header background
     doc
-      .rect(this.MARGIN, yPos, this.CONTENT_WIDTH, rowHeight)
+      .rect(this.MARGIN, yPos, contentWidth, rowHeight)
       .fillOpacity(0.1)
       .fill()
       .fillOpacity(1);
 
-    yPos += 6;
+    yPos += 5;
 
-    doc.text("№", col1X + 3, yPos, { width: 20, align: "center" });
-    doc.text("Барааны нэр", col2X, yPos);
-    doc.text("Баркод", col3X, yPos);
-    doc.text("Тоо", col4X, yPos, { width: 35, align: "center" });
-    doc.text("Нэгж үнэ", col5X, yPos, { width: 55, align: "right" });
-    doc.text("Нийт үнэ", col6X, yPos, { width: 55, align: "right" });
+    doc.text("№", col1X + 2, yPos, { width: numWidth - 4, align: "center" });
+    doc.text("Барааны нэр", col2X, yPos, { width: nameWidth });
+    doc.text("Баркод", col3X, yPos, { width: barcodeWidth });
+    doc.text("Тоо/Ширхэг", col4X, yPos, {
+      width: qtyWidth,
+      align: "center",
+    });
+    doc.text("Нэгж үнэ", col5X, yPos, {
+      width: unitPriceWidth,
+      align: "right",
+    });
+    doc.text("Нийт үнэ", col6X, yPos, {
+      width: totalPriceWidth,
+      align: "right",
+    });
 
-    yPos += rowHeight - 6;
+    yPos += rowHeight - 5;
 
     // Table border
     doc
       .moveTo(this.MARGIN, tableTop)
-      .lineTo(this.PAGE_WIDTH - this.MARGIN, tableTop)
+      .lineTo(pageWidth - this.MARGIN, tableTop)
       .moveTo(this.MARGIN, yPos)
-      .lineTo(this.PAGE_WIDTH - this.MARGIN, yPos)
+      .lineTo(pageWidth - this.MARGIN, yPos)
       .stroke();
 
     // Table rows
-    doc.fontSize(7).font("Roboto");
+    doc.fontSize(6.5).font("Roboto");
 
     data.items.forEach((item, index) => {
-      yPos += 4;
+      yPos += 3;
 
-      doc.text((index + 1).toString(), col1X + 3, yPos, {
-        width: 20,
+      doc.text((index + 1).toString(), col1X + 2, yPos, {
+        width: numWidth - 4,
         align: "center",
       });
-      doc.text(item.productName, col2X, yPos, { width: 120 });
-      doc.text(item.productCode, col3X, yPos, { width: 65 });
+      doc.text(item.productName, col2X, yPos, { width: nameWidth - 2 });
+      doc.text(item.barcode || item.productCode || "N/A", col3X, yPos, {
+        width: barcodeWidth - 2,
+      });
       doc.text(item.quantity.toString(), col4X, yPos, {
-        width: 35,
+        width: qtyWidth,
         align: "center",
       });
       doc.text(this.formatCurrencyShort(item.unitPrice), col5X, yPos, {
-        width: 55,
+        width: unitPriceWidth,
         align: "right",
       });
       doc.text(this.formatCurrencyShort(item.total), col6X, yPos, {
-        width: 55,
+        width: totalPriceWidth,
         align: "right",
       });
 
-      yPos += rowHeight - 4;
+      yPos += rowHeight - 3;
 
       // Row divider
       doc
         .moveTo(this.MARGIN, yPos)
-        .lineTo(this.PAGE_WIDTH - this.MARGIN, yPos)
+        .lineTo(pageWidth - this.MARGIN, yPos)
         .strokeOpacity(0.2)
         .stroke()
         .strokeOpacity(1);
     });
 
-    yPos += 12;
+    yPos += 8;
 
     // Final divider
     doc
       .moveTo(this.MARGIN, yPos)
-      .lineTo(this.PAGE_WIDTH - this.MARGIN, yPos)
+      .lineTo(pageWidth - this.MARGIN, yPos)
       .strokeOpacity(0.3)
       .stroke()
       .strokeOpacity(1);
 
-    return yPos + 15;
+    return yPos + 8;
   }
 
-  private addVATInfo(doc: PDFKit.PDFDocument, data: ReceiptData, yPos: number): number {
-    doc
-      .fontSize(9)
-      .font("Roboto-Bold")
-      .text("6. НӨАТ мэдээлэл", this.MARGIN, yPos);
-
-    yPos += 15;
-
-    const labelX = this.MARGIN + 7;
-    const valueX = this.PAGE_WIDTH - this.MARGIN - 60;
-
-    doc.fontSize(8);
-
-    // Total with VAT
-    doc.font("Roboto-Bold").text("НӨАТ-тэй дүн:", labelX, yPos);
-    doc.font("Roboto").text(this.formatCurrencyShort(data.total), valueX, yPos, {
-      width: 60,
-      align: "right",
-    });
-    yPos += 12;
-
-    // VAT
-    doc.font("Roboto-Bold").text("НӨАТ:", labelX, yPos);
-    doc.font("Roboto").text(this.formatCurrencyShort(data.vat), valueX, yPos, {
-      width: 60,
-      align: "right",
-    });
-    yPos += 12;
-
-    // City tax
-    doc.font("Roboto-Bold").text("НХАТ:", labelX, yPos);
-    doc.font("Roboto").text("0", valueX, yPos, { width: 60, align: "right" });
-    yPos += 15;
-
-    // Divider
-    doc
-      .moveTo(this.MARGIN, yPos)
-      .lineTo(this.PAGE_WIDTH - this.MARGIN, yPos)
-      .strokeOpacity(0.3)
-      .stroke()
-      .strokeOpacity(1);
-
-    return yPos + 12;
-  }
-
-  private async addQRCodeAndLottery(
+  private async addVATAndQRInColumns(
     doc: PDFKit.PDFDocument,
     data: ReceiptData,
     qrCodeDataURL: string,
     yPos: number
   ): Promise<number> {
-    doc
-      .fontSize(9)
-      .font("Roboto-Bold")
-      .text("7. QR код ба Сугалааны дугаар", this.MARGIN, yPos);
+    const pageWidth = (doc as any)._pageWidth;
+    const contentWidth = (doc as any)._contentWidth;
+    const startY = yPos;
 
-    yPos += 15;
+    // Left column: QR код ба Сугалааны дугаар
+    const col1X = this.MARGIN;
+    const col1Width = contentWidth / 2 - 10;
+
+    doc.fontSize(7).font("Roboto-Bold");
+    doc.text("QR код ба Сугалаа", col1X, yPos, { width: col1Width });
+    let y1 = yPos + 10;
 
     // Convert QR data URL to buffer
     const qrBuffer = Buffer.from(qrCodeDataURL.split(",")[1], "base64");
 
     // Add QR code
-    const qrSize = 100; // ~35mm
-    const qrX = this.MARGIN + 10;
-    doc.image(qrBuffer, qrX, yPos, { width: qrSize, height: qrSize });
+    const qrSize = 60;
+    doc.image(qrBuffer, col1X, y1, { width: qrSize, height: qrSize });
 
     // Lottery number (if available)
     if (data.ebarimtLottery) {
-      const lotteryX = qrX + qrSize + 20;
+      const lotteryX = col1X + qrSize + 10;
+
+      doc.fontSize(7).font("Roboto-Bold").text("Сугалаа:", lotteryX, y1);
 
       doc
         .fontSize(11)
         .font("Roboto-Bold")
-        .text("Сугалааны дугаар:", lotteryX, yPos + 10);
+        .text(data.ebarimtLottery, lotteryX, y1 + 12);
 
       doc
-        .fontSize(16)
-        .font("Roboto-Bold")
-        .text(data.ebarimtLottery, lotteryX, yPos + 28);
-
-      doc
-        .fontSize(7)
+        .fontSize(5.5)
         .font("Roboto")
         .text(
-          "Та энэ дугаараа хадгалж, сарын\nэцэст сугалаанд оролцоно уу!",
+          "Та энэ дугаараа хадгалж,\nсарын эцэст сугалаанд\nоролцоно уу!",
           lotteryX,
-          yPos + 50,
-          { width: 150 }
+          y1 + 28,
+          { width: 100 }
         );
     } else {
-      const lotteryX = qrX + qrSize + 20;
+      const lotteryX = col1X + qrSize + 10;
       doc
-        .fontSize(8)
+        .fontSize(6.5)
         .font("Roboto")
-        .text("E-Barimt бүртгэлгүй", lotteryX, yPos + 40);
+        .text("E-Barimt\nбүртгэлгүй", lotteryX, y1 + 20);
     }
 
     // QR verification text
     doc
-      .fontSize(7)
+      .fontSize(5.5)
       .font("Roboto")
-      .text("QR код уншуулж баримт шалгана уу", qrX + qrSize / 2, yPos + qrSize + 8, {
+      .text("QR код уншуулж\nбаримт шалгана уу", col1X, y1 + qrSize + 3, {
         width: qrSize,
         align: "center",
       });
 
-    return yPos + qrSize + 25;
+    // Right column: Price summary (no header)
+    const col2X = this.MARGIN + contentWidth / 2 + 10;
+    const col2Width = contentWidth / 2 - 10;
+
+    let y2 = yPos;
+    doc.fontSize(6.5);
+
+    // Calculate VAT as 10% of subtotal
+    const vat10Percent = data.subtotal * 0.1;
+    const totalWithVat = data.subtotal + vat10Percent;
+
+    // Subtotal (Барааны нийт дүн)
+    doc.font("Roboto-Bold").text("Барааны нийт дүн:", col2X, y2);
+    doc
+      .font("Roboto")
+      .text(this.formatCurrencyShort(data.subtotal), col2X + 90, y2);
+    y2 += 10;
+
+    // VAT 10%
+    doc.font("Roboto-Bold").text("НӨАТ (10%):", col2X, y2);
+    doc
+      .font("Roboto")
+      .text(this.formatCurrencyShort(vat10Percent), col2X + 90, y2);
+    y2 += 10;
+
+    // Total (Нийт үнэ = Subtotal + VAT 10%)
+    doc.font("Roboto-Bold").text("Нийт үнэ:", col2X, y2);
+    doc
+      .font("Roboto")
+      .text(this.formatCurrencyShort(totalWithVat), col2X + 90, y2);
+
+    const maxY = Math.max(y1 + qrSize + 15, y2);
+    yPos = maxY + 15;
+
+    // Signature section - vertical layout, centered
+    doc.fontSize(6.5).font("Roboto");
+
+    // Хүлээлгэн өгсөн (дээр)
+    doc.text(
+      "Хүлээлгэн өгсөн: ......................./......................./",
+      this.MARGIN,
+      yPos,
+      {
+        width: contentWidth,
+        align: "center",
+      }
+    );
+
+    yPos += 12;
+
+    // Хүлээн авсан (доор)
+    doc.text(
+      "Хүлээн авсан: ......................./......................./",
+      this.MARGIN,
+      yPos,
+      {
+        width: contentWidth,
+        align: "center",
+      }
+    );
+
+    yPos += 15;
+
+    return yPos;
   }
 
   private addFooter(doc: PDFKit.PDFDocument): void {
-    const footerY = this.PAGE_HEIGHT - this.MARGIN - 20;
+    const pageHeight = (doc as any)._pageHeight;
+    const contentWidth = (doc as any)._contentWidth;
+    const footerY = pageHeight - this.MARGIN - 15;
 
     doc
-      .fontSize(7)
+      .fontSize(6)
       .font("Roboto")
       .text("Худалдан авалт хийсэнд баярлалаа!", this.MARGIN, footerY, {
-        width: this.CONTENT_WIDTH,
+        width: contentWidth,
         align: "center",
       });
-
-    doc.text(
-      `Хэвлэсэн огноо: ${this.formatDateTime(new Date())}`,
-      this.MARGIN,
-      footerY + 10,
-      { width: this.CONTENT_WIDTH, align: "center" }
-    );
   }
 
   private async generateQRCode(data: ReceiptData): Promise<string> {
@@ -660,4 +648,3 @@ class PDFKitService {
 }
 
 export default new PDFKitService();
-

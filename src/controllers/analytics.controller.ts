@@ -15,7 +15,7 @@ export const calculateProductSalesAnalytics = async (
     const { productId, month, year } = req.body;
 
     if (!productId) {
-      throw new AppError("Product ID is required", 400);
+      throw new AppError("Барааны ID заавал шаардлагатай", 400);
     }
 
     const now = new Date();
@@ -246,7 +246,7 @@ export const getProductSalesAnalytics = async (
     });
 
     if (!product) {
-      throw new AppError("Product not found", 404);
+      throw new AppError(req.t.products.notFound, 404);
     }
 
     res.json({
@@ -271,7 +271,7 @@ export const generateInventoryForecast = async (
     const { productId, month, year } = req.body;
 
     if (!productId) {
-      throw new AppError("Product ID is required", 400);
+      throw new AppError("Барааны ID заавал шаардлагатай", 400);
     }
 
     const now = new Date();
@@ -485,11 +485,11 @@ export const getSalesByPeriod = async (
     const { startDate, endDate, period } = req.query;
 
     if (!startDate || !endDate) {
-      throw new AppError("Start date and end date are required", 400);
+      throw new AppError("Эхлэх болон дуусах огноо заавал шаардлагатай", 400);
     }
 
     if (!period || !["week", "month", "year"].includes(period as string)) {
-      throw new AppError("Period must be week, month, or year", 400);
+      throw new AppError("Хугацаа долоо хоног, сар эсвэл жил байх ёстой", 400);
     }
 
     const authReq = req as AuthRequest;

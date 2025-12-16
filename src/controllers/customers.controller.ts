@@ -73,13 +73,11 @@ export const getAllCustomers = async (
   try {
     const authReq = req as AuthRequest;
     const page = parseInt(req.query.page as string) || 1;
-    let limit: number | undefined = parseInt(req.query.limit as string) || 10;
-    let skip: number | undefined = (page - 1) * limit;
 
-    if (req.query.limit === "all") {
-      limit = undefined;
-      skip = undefined;
-    }
+    // Always show all customers regardless of limit parameter
+    // This ensures all 3500+ customers are visible on the customer page
+    let limit: number | undefined = undefined;
+    let skip: number | undefined = undefined;
 
     const district = req.query.district as string;
     const registrationNumber = req.query.registrationNumber as string;
@@ -174,7 +172,7 @@ export const getCustomerById = async (
     });
 
     if (!customer) {
-      throw new AppError("Customer not found", 404);
+      throw new AppError(req.t.customers.notFound, 404);
     }
 
     // Sales agents can only see their assigned customers
@@ -182,7 +180,7 @@ export const getCustomerById = async (
       authReq.user?.role === "SalesAgent" &&
       customer.assignedAgentId !== authReq.user.userId
     ) {
-      throw new AppError("You do not have access to this customer", 403);
+      throw new AppError(req.t.auth.forbidden, 403);
     }
 
     res.json({
@@ -224,7 +222,7 @@ export const updateCustomer = async (
     });
 
     if (!customer) {
-      throw new AppError("Customer not found", 404);
+      throw new AppError(req.t.customers.notFound, 404);
     }
 
     const updatedCustomer = await prisma.customer.update({

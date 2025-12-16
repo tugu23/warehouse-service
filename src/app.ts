@@ -7,6 +7,7 @@ import { config } from "./config";
 import { swaggerSpec } from "./config/swagger";
 import logger from "./utils/logger";
 import { errorHandler, notFoundHandler } from "./middleware/error.middleware";
+import { languageMiddleware } from "./middleware/language.middleware";
 
 // Import routes
 import authRoutes from "./routes/auth.routes";
@@ -24,7 +25,7 @@ import reportsRoutes from "./routes/reports.routes";
 import posapiRoutes from "./routes/posapi.routes";
 import storesRoutes from "./routes/stores.routes";
 import analyticsRoutes from "./routes/analytics.routes";
-import ebarimtRoutes from "./routes/ebarimt.routes";
+// import ebarimtRoutes from "./routes/ebarimt.routes"; // Temporarily disabled
 
 const app: Application = express();
 
@@ -51,6 +52,9 @@ app.use(
 // Body parsing middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Language middleware - must be before routes
+app.use(languageMiddleware);
 
 // HTTP request logging
 if (config.nodeEnv === "development") {
@@ -124,7 +128,7 @@ app.use("/api/reports", reportsRoutes);
 app.use("/api/posapi", posapiRoutes);
 app.use("/api/stores", storesRoutes);
 app.use("/api/analytics", analyticsRoutes);
-app.use("/api/ebarimt", ebarimtRoutes);
+// app.use("/api/ebarimt", ebarimtRoutes); // Temporarily disabled
 
 // 404 handler
 app.use(notFoundHandler);

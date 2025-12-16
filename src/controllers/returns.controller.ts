@@ -20,7 +20,7 @@ export const createReturn = async (
       });
 
       if (!order) {
-        throw new AppError("Order not found", 404);
+        throw new AppError(req.t.returns.orderNotFound, 404);
       }
 
       // Validate that the product was in this order
@@ -29,13 +29,13 @@ export const createReturn = async (
       );
 
       if (!orderItem) {
-        throw new AppError("Product not found in this order", 400);
+        throw new AppError(req.t.returns.productNotInOrder, 400);
       }
 
       // Validate quantity
       if (quantity > orderItem.quantity) {
         throw new AppError(
-          `Return quantity (${quantity}) cannot exceed ordered quantity (${orderItem.quantity})`,
+          `Буцаах тоо ширхэг (${quantity}) захиалсан тоо ширхгээс (${orderItem.quantity}) их байж болохгүй`,
           400
         );
       }
@@ -151,7 +151,7 @@ export const getReturnById = async (
     });
 
     if (!returnRecord) {
-      throw new AppError("Return not found", 404);
+      throw new AppError(req.t.returns.notFound, 404);
     }
 
     res.json({

@@ -21,12 +21,12 @@ export const login = async (
     });
 
     if (!employee) {
-      throw new AppError("Invalid credentials", 401);
+      throw new AppError(req.t.auth.invalidCredentials, 401);
     }
 
     // Check if account is active
     if (!employee.isActive) {
-      throw new AppError("Account is deactivated", 403);
+      throw new AppError(req.t.auth.accountDeactivated, 403);
     }
 
     // Verify password
@@ -36,7 +36,7 @@ export const login = async (
     );
 
     if (!isPasswordValid) {
-      throw new AppError("Invalid credentials", 401);
+      throw new AppError(req.t.auth.invalidCredentials, 401);
     }
 
     // Generate JWT

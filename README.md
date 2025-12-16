@@ -2,6 +2,17 @@
 
 A secure, scalable, and robust RESTful API backend for managing warehouse operations, inventory, sales, and customer relationships.
 
+## 🇲🇳 Монгол хэлний дэмжлэг / Mongolian Language Support
+
+**🎉 Энэхүү API нь монгол хэлийг бүрэн дэмжинэ!**
+
+- ✅ Бүх алдааны мэдээлэл монголоор
+- ✅ Анхдагч хэл: Монгол
+- ✅ Accept-Language header-ээр хэл солих боломжтой
+- ✅ 200+ монгол орчуулга
+
+Дэлгэрэнгүй: [MONGOLIAN_TRANSLATION_GUIDE.md](MONGOLIAN_TRANSLATION_GUIDE.md)
+
 ## 🚀 Technology Stack
 
 - **Runtime**: Node.js with TypeScript
@@ -12,6 +23,7 @@ A secure, scalable, and robust RESTful API backend for managing warehouse operat
 - **Validation**: express-validator
 - **Logging**: Winston + Morgan
 - **Build Tool**: Webpack 5
+- **i18n**: Custom translation system (Mongolian + English)
 
 ## 📋 Features
 
@@ -25,6 +37,8 @@ A secure, scalable, and robust RESTful API backend for managing warehouse operat
 - ✅ Rate limiting and security features
 - ✅ Pagination for all list endpoints
 - ✅ Detailed logging and monitoring
+- ✅ **Mongolian language support (default)**
+- ✅ **Multi-language API responses**
 
 ## 🏗️ Project Structure
 

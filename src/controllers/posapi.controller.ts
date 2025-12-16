@@ -26,7 +26,7 @@ export const syncOrderToPosApi = async (
     });
 
     if (!order) {
-      throw new AppError("Order not found", 404);
+      throw new AppError(req.t.orders.notFound, 404);
     }
 
     // Sync to POS API
@@ -69,7 +69,7 @@ export const syncProductToPosApi = async (
     });
 
     if (!product) {
-      throw new AppError("Product not found", 404);
+      throw new AppError(req.t.products.notFound, 404);
     }
 
     // Sync to POS API
@@ -103,7 +103,7 @@ export const getPosSalesData = async (
     const { startDate, endDate } = req.query;
 
     if (!startDate || !endDate) {
-      throw new AppError("Start date and end date are required", 400);
+      throw new AppError("Эхлэх болон дуусах огноо заавал шаардлагатай", 400);
     }
 
     const start = new Date(startDate as string);

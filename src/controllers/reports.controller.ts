@@ -13,7 +13,7 @@ export const getSalesReport = async (
     const { startDate, endDate, agentId, customerId } = req.query;
 
     if (!startDate || !endDate) {
-      throw new AppError("Start date and end date are required", 400);
+      throw new AppError("Эхлэх болон дуусах огноо заавал шаардлагатай", 400);
     }
 
     const where: any = {
@@ -343,7 +343,7 @@ export const getOrderExport = async (
     });
 
     if (!order) {
-      throw new AppError("Order not found", 404);
+      throw new AppError(req.t.orders.notFound, 404);
     }
 
     const exportData = {
@@ -501,7 +501,7 @@ export const getDeliveryScheduleReport = async (
     const { startDate, endDate, agentId, status } = req.query;
 
     if (!startDate || !endDate) {
-      throw new AppError("Start date and end date are required", 400);
+      throw new AppError("Эхлэх болон дуусах огноо заавал шаардлагатай", 400);
     }
 
     const where: any = {
@@ -596,7 +596,7 @@ export const exportSalesReportToExcel = async (
     const { startDate, endDate, agentId, customerId } = req.query;
 
     if (!startDate || !endDate) {
-      throw new AppError("Start date and end date are required", 400);
+      throw new AppError("Эхлэх болон дуусах огноо заавал шаардлагатай", 400);
     }
 
     const where: any = {
@@ -1009,7 +1009,7 @@ export const exportSingleOrderToExcel = async (
     });
 
     if (!order) {
-      throw new AppError("Order not found", 404);
+      throw new AppError(req.t.orders.notFound, 404);
     }
 
     const buffer = await ExcelService.exportSingleOrderToExcel(order);

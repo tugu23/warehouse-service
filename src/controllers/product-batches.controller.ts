@@ -25,7 +25,7 @@ export const createProductBatch = async (
     });
 
     if (!product) {
-      throw new AppError("Product not found", 404);
+      throw new AppError(req.t.products.notFound, 404);
     }
 
     // Check if batch number already exists for this product
@@ -40,7 +40,7 @@ export const createProductBatch = async (
 
     if (existingBatch) {
       throw new AppError(
-        `Batch number ${batchNumber} already exists for this product`,
+        `${batchNumber} багцын дугаар энэ бараанд аль хэдийн бүртгэгдсэн байна`,
         400
       );
     }
@@ -198,11 +198,11 @@ export const updateProductBatch = async (
     });
 
     if (!batch) {
-      throw new AppError("Batch not found", 404);
+      throw new AppError("Багц олдсонгүй", 404);
     }
 
     if (batch.productId !== parseInt(productId)) {
-      throw new AppError("Batch does not belong to this product", 400);
+      throw new AppError("Энэ багц тухайн бараанд хамааралгүй байна", 400);
     }
 
     const updateData: any = {};
@@ -257,11 +257,11 @@ export const deactivateProductBatch = async (
     });
 
     if (!batch) {
-      throw new AppError("Batch not found", 404);
+      throw new AppError("Багц олдсонгүй", 404);
     }
 
     if (batch.productId !== parseInt(productId)) {
-      throw new AppError("Batch does not belong to this product", 400);
+      throw new AppError("Энэ багц тухайн бараанд хамааралгүй байна", 400);
     }
 
     const updatedBatch = await prisma.productBatch.update({
@@ -295,7 +295,7 @@ export const getProductInventoryBalance = async (
     });
 
     if (!product) {
-      throw new AppError("Product not found", 404);
+      throw new AppError(req.t.products.notFound, 404);
     }
 
     let where: any = {
@@ -388,7 +388,7 @@ export const getActiveBatchesForFIFO = async (
 
   if (remainingQuantity > 0) {
     throw new AppError(
-      `Insufficient batch inventory. Need ${remainingQuantity} more units.`,
+      `Багцын үлдэгдэл хүрэлцэхгүй байна. ${remainingQuantity} нэгж дутуу байна.`,
       400
     );
   }

@@ -53,8 +53,8 @@ const router = Router();
  *           format: date-time
  */
 
-// All routes require authentication and Admin role
-router.use(authMiddleware, checkRole(["Admin"]));
+// All routes require authentication
+router.use(authMiddleware);
 
 /**
  * @swagger
@@ -115,6 +115,7 @@ router.use(authMiddleware, checkRole(["Admin"]));
  */
 router.post(
   "/",
+  checkRole(["Admin"]), // Only Admin can create employees
   validate([
     body("name").notEmpty().withMessage("Name is required"),
     body("email").isEmail().withMessage("Valid email is required"),
@@ -155,7 +156,11 @@ router.post(
  *       403:
  *         $ref: '#/components/responses/Forbidden'
  */
-router.get("/", getAllEmployees);
+router.get(
+  "/",
+  checkRole(["Admin", "Manager", "SalesAgent"]), // Agents can view employee list
+  getAllEmployees
+);
 
 /**
  * @swagger
@@ -188,6 +193,7 @@ router.get("/", getAllEmployees);
  */
 router.get(
   "/:id",
+  checkRole(["Admin", "Manager", "SalesAgent"]), // Agents can view employee details
   validate([param("id").isInt().withMessage("Valid employee ID is required")]),
   getEmployeeById
 );
@@ -229,6 +235,7 @@ router.get(
  */
 router.put(
   "/:id",
+  checkRole(["Admin"]), // Only Admin can update employees
   validate([
     param("id").isInt().withMessage("Valid employee ID is required"),
     body("name").optional().notEmpty().withMessage("Name cannot be empty"),
@@ -263,6 +270,7 @@ router.put(
  */
 router.delete(
   "/:id",
+  checkRole(["Admin"]), // Only Admin can delete employees
   validate([param("id").isInt().withMessage("Valid employee ID is required")]),
   deleteEmployee
 );

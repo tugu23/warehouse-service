@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import logger from "../utils/logger";
+import { tLang } from "../i18n";
 
 export class AppError extends Error {
   statusCode: number;
@@ -20,18 +21,21 @@ export const errorHandler = (
   res: Response,
   next: NextFunction
 ): void => {
+  // Get translations for the request language or default to Mongolian
+  const t = req.t || tLang('mn');
+  
   let statusCode = 500;
-  let message = "Internal server error";
+  let message = t.common.serverError;
 
   if (err instanceof AppError) {
     statusCode = err.statusCode;
     message = err.message;
   } else if (err.name === "ValidationError") {
     statusCode = 400;
-    message = err.message;
+    message = err.message || t.common.validationError;
   } else if (err.name === "UnauthorizedError") {
     statusCode = 401;
-    message = "Unauthorized";
+    message = t.auth.unauthorized;
   }
 
   logger.error("Error occurred:", {
@@ -53,8 +57,9 @@ export const notFoundHandler = (
   res: Response,
   next: NextFunction
 ): void => {
+  const t = req.t || tLang('mn');
   res.status(404).json({
     status: "error",
-    message: `Route ${req.originalUrl} not found`,
+    message: `${req.originalUrl} замбар олдсонгүй`,
   });
 };

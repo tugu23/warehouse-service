@@ -132,7 +132,7 @@ export const getStoreById = async (
     });
 
     if (!store) {
-      throw new AppError("Store not found", 404);
+      throw new AppError(req.t.stores.notFound, 404);
     }
 
     res.json({
@@ -165,7 +165,7 @@ export const updateStore = async (
     });
 
     if (!store) {
-      throw new AppError("Store not found", 404);
+      throw new AppError(req.t.stores.notFound, 404);
     }
 
     const updatedStore = await prisma.store.update({
@@ -221,14 +221,14 @@ export const deleteStore = async (
     });
 
     if (!store) {
-      throw new AppError("Store not found", 404);
+      throw new AppError(req.t.stores.notFound, 404);
     }
 
     // Check if store has active employees
     const activeEmployees = store.employees.filter((e) => e.isActive);
     if (activeEmployees.length > 0) {
       throw new AppError(
-        `Cannot deactivate store with ${activeEmployees.length} active employee(s). Please reassign or deactivate employees first.`,
+        `${activeEmployees.length} идэвхтэй ажилтантай дэлгүүрийг идэвхгүй болгох боломжгүй. Эхлээд ажилтнуудыг өөр дэлгүүрт шилжүүлнэ үү.`,
         400
       );
     }
@@ -264,7 +264,7 @@ export const getStoreEmployees = async (
     });
 
     if (!store) {
-      throw new AppError("Store not found", 404);
+      throw new AppError(req.t.stores.notFound, 404);
     }
 
     const employees = await prisma.employee.findMany({

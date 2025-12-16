@@ -16,7 +16,7 @@ export const recordPayment = async (
 
     // Validate amount
     if (!amount || amount <= 0) {
-      throw new AppError("Payment amount must be greater than zero", 400);
+      throw new AppError(req.t.payments.invalidAmount, 400);
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -30,7 +30,7 @@ export const recordPayment = async (
       });
 
       if (!order) {
-        throw new AppError("Order not found", 404);
+        throw new AppError(req.t.payments.orderNotFound, 404);
       }
 
       // Calculate remaining amount
@@ -42,7 +42,7 @@ export const recordPayment = async (
 
       if (remaining.lt(0)) {
         throw new AppError(
-          `Payment amount exceeds remaining balance. Remaining: ${totalAmount.sub(currentPaid).toString()}`,
+          `Төлбөрийн дүн үлдсэн дүнгээс их байна. Үлдсэн дүн: ${totalAmount.sub(currentPaid).toString()}`,
           400
         );
       }

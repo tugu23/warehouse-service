@@ -74,7 +74,7 @@ router.use(authMiddleware);
  *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
- *     description: Create a new order for a customer
+ *     description: Create a new order for a customer (Admin, Manager, SalesAgent, MarketSalesperson, StoreSalesperson)
  *     requestBody:
  *       required: true
  *       content:
@@ -124,6 +124,13 @@ router.use(authMiddleware);
  */
 router.post(
   "/",
+  checkRole([
+    "Admin",
+    "Manager",
+    "SalesAgent",
+    "MarketSalesperson",
+    "StoreSalesperson",
+  ]),
   validate([
     body("customerId").isInt().withMessage("Valid customer ID is required"),
     body("items")
