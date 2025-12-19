@@ -189,16 +189,19 @@ async function main() {
   console.log("  Creating customer types...");
   const turulHariltsagchData = loadJsonData("turul_hariltsagch");
   const customerTypeMap = new Map<number, number>();
+  const organizationTypeMap = new Map<number, string>(); // Map turul ID to organization type name
 
   for (const row of turulHariltsagchData.rows) {
     const obj = mapRowToObject(turulHariltsagchData.columns, row);
     try {
+      const typeName = obj.turul || `Төрөл ${obj.id}`;
       const customerType = await prisma.customerType.create({
         data: {
-          typeName: obj.name || `Төрөл ${obj.id}`,
+          typeName: typeName,
         },
       });
       customerTypeMap.set(obj.id, customerType.id);
+      organizationTypeMap.set(obj.id, typeName); // Store organization type name
       idMapper.set("turul_hariltsagch", obj.id, customerType.id);
     } catch (error) {
       console.error(`  ⚠️  Error creating customer type ${obj.id}:`, error);
@@ -405,10 +408,15 @@ async function main() {
       ? idMapper.get("borluulagch", obj.borluulagch_id)
       : null;
 
+    // Get organization type name from turul
+    const organizationType = obj.turul
+      ? organizationTypeMap.get(obj.turul) || null
+      : null;
+
     customers.push({
       name: obj.ner,
       organizationName: obj.realname || null,
-      organizationType: null,
+      organizationType: organizationType,
       contactPersonName: null,
       registrationNumber: obj.hariltsagch_id
         ? String(obj.hariltsagch_id)
