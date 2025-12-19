@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import prisma from "../db/prisma";
 import { AppError } from "../middleware/error.middleware";
 import logger from "../utils/logger";
+import { serializeProduct, serializeProducts } from "../utils/serializer";
 
 export const createProduct = async (
   req: Request,
@@ -38,16 +39,8 @@ export const createProduct = async (
       }
     }
 
-    // Check if barcode already exists
-    if (barcode) {
-      const existingBarcode = await prisma.product.findUnique({
-        where: { barcode },
-      });
-
-      if (existingBarcode) {
-        throw new AppError(req.t.products.barcodeExists, 400);
-      }
-    }
+    // Note: Barcode duplicates are now allowed (constraint removed)
+    // Multiple products can have the same barcode
 
     const product = await prisma.product.create({
       data: {
@@ -77,7 +70,7 @@ export const createProduct = async (
 
     res.status(201).json({
       status: "success",
-      data: { product },
+      data: { product: serializeProduct(product) },
     });
   } catch (error) {
     next(error);
@@ -100,6 +93,10 @@ export const getAllProducts = async (
     }
 
     const search = req.query.search as string;
+    
+    // Parse include query parameter: ?include=batches,prices,supplier,category
+    const includeParam = req.query.include as string;
+    const includeFields = includeParam ? includeParam.split(',') : ['supplier', 'category', 'batches', 'prices'];
 
     const where: any = {};
 
@@ -113,15 +110,46 @@ export const getAllProducts = async (
       ];
     }
 
+    // Build dynamic include object based on query parameters
+    const include: any = {};
+    
+    if (includeFields.includes('supplier')) {
+      include.supplier = true;
+    }
+    
+    if (includeFields.includes('category')) {
+      include.category = true;
+    }
+    
+    if (includeFields.includes('batches')) {
+      include.batches = {
+        where: {
+          isActive: true,
+        },
+        orderBy: {
+          expiryDate: "asc" as const,
+        },
+        take: 5, // Show only the first 5 batches
+      };
+    }
+    
+    if (includeFields.includes('prices')) {
+      include.prices = {
+        include: {
+          customerType: true,
+        },
+        orderBy: {
+          customerTypeId: "asc" as const,
+        },
+      };
+    }
+
     const [products, total] = await Promise.all([
       prisma.product.findMany({
         where,
         skip,
         take: limit,
-        include: {
-          supplier: true,
-          category: true,
-        },
+        include,
         orderBy: { createdAt: "desc" },
       }),
       prisma.product.count({ where }),
@@ -130,7 +158,7 @@ export const getAllProducts = async (
     res.json({
       status: "success",
       data: {
-        products,
+        products: serializeProducts(products),
         pagination: {
           page,
           limit: limit || total,
@@ -157,6 +185,22 @@ export const getProductById = async (
       include: {
         supplier: true,
         category: true,
+        batches: {
+          where: {
+            isActive: true,
+          },
+          orderBy: {
+            expiryDate: "asc",
+          },
+        },
+        prices: {
+          include: {
+            customerType: true,
+          },
+          orderBy: {
+            customerTypeId: "asc",
+          },
+        },
       },
     });
 
@@ -166,7 +210,7 @@ export const getProductById = async (
 
     res.json({
       status: "success",
-      data: { product },
+      data: { product: serializeProduct(product) },
     });
   } catch (error) {
     next(error);
@@ -216,16 +260,8 @@ export const updateProduct = async (
       }
     }
 
-    // Check if new barcode already exists
-    if (barcode && barcode !== product.barcode) {
-      const existingBarcode = await prisma.product.findUnique({
-        where: { barcode },
-      });
-
-      if (existingBarcode) {
-        throw new AppError(req.t.products.barcodeExists, 400);
-      }
-    }
+    // Note: Barcode duplicates are now allowed (constraint removed)
+    // Multiple products can have the same barcode
 
     const updatedProduct = await prisma.product.update({
       where: { id: parseInt(id) },
@@ -255,7 +291,7 @@ export const updateProduct = async (
 
     res.json({
       status: "success",
-      data: { product: updatedProduct },
+      data: { product: serializeProduct(updatedProduct) },
     });
   } catch (error) {
     next(error);
@@ -298,7 +334,7 @@ export const adjustInventory = async (
     res.json({
       status: "success",
       data: {
-        product: updatedProduct,
+        product: serializeProduct(updatedProduct),
         oldQuantity: product.stockQuantity,
         newQuantity,
         adjustment,
@@ -317,7 +353,8 @@ export const getProductByBarcode = async (
   try {
     const { barcode } = req.params;
 
-    const product = await prisma.product.findUnique({
+    // Use findMany since barcode is no longer unique
+    const products = await prisma.product.findMany({
       where: { barcode },
       include: {
         supplier: true,
@@ -336,16 +373,29 @@ export const getProductByBarcode = async (
       },
     });
 
-    if (!product) {
+    if (!products || products.length === 0) {
       throw new AppError(req.t.products.notFound, 404);
     }
 
-    logger.info(`Product scanned by barcode: ${barcode}`);
+    logger.info(`Product(s) scanned by barcode: ${barcode}, found: ${products.length}`);
 
-    res.json({
-      status: "success",
-      data: { product },
-    });
+    // If only one product found, return it directly
+    if (products.length === 1) {
+      res.json({
+        status: "success",
+        data: { product: serializeProduct(products[0]) },
+      });
+    } else {
+      // If multiple products found, return all
+      res.json({
+        status: "success",
+        data: { 
+          products: serializeProducts(products),
+          count: products.length,
+          message: `${products.length} бүтээгдэхүүн олдлоо`
+        },
+      });
+    }
   } catch (error) {
     next(error);
   }
