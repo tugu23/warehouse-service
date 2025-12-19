@@ -25,6 +25,9 @@ import reportsRoutes from "./routes/reports.routes";
 import posapiRoutes from "./routes/posapi.routes";
 import storesRoutes from "./routes/stores.routes";
 import analyticsRoutes from "./routes/analytics.routes";
+import productPriceRoutes from "./routes/productPrice.routes";
+import customerTypesRoutes from "./routes/customerTypes.routes";
+import etaxRoutes from "./routes/etax.routes";
 // import ebarimtRoutes from "./routes/ebarimt.routes"; // Temporarily disabled
 
 const app: Application = express();
@@ -113,6 +116,7 @@ app.use(
 );
 
 // API routes
+app.use("/api/prices", productPriceRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/employees", employeesRoutes);
 app.use("/api/products", productsRoutes);
@@ -128,6 +132,9 @@ app.use("/api/reports", reportsRoutes);
 app.use("/api/posapi", posapiRoutes);
 app.use("/api/stores", storesRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api/product-prices", productPriceRoutes);
+app.use("/api/customer-types", customerTypesRoutes);
+app.use("/api/etax", etaxRoutes);
 // app.use("/api/ebarimt", ebarimtRoutes); // Temporarily disabled
 
 // 404 handler

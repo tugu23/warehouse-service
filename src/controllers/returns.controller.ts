@@ -9,48 +9,64 @@ export const createReturn = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { orderId, productId, quantity, reason } = req.body;
+    const { 
+      orderId, 
+      productId, 
+      quantity, 
+      reason, 
+      customerId,      // NEW
+      unitPrice,       // NEW
+      expiryDate,      // NEW
+      notes            // NEW
+    } = req.body;
 
     // Use transaction to ensure data consistency
     const returnRecord = await prisma.$transaction(async (tx) => {
-      // Validate order exists
-      const order = await tx.order.findUnique({
-        where: { id: orderId },
-        include: { orderItems: true },
-      });
+      // If orderId provided, validate it
+      if (orderId) {
+        const order = await tx.order.findUnique({
+          where: { id: orderId },
+          include: { orderItems: true },
+        });
 
-      if (!order) {
-        throw new AppError(req.t.returns.orderNotFound, 404);
-      }
+        if (!order) {
+          throw new AppError(req.t.returns.orderNotFound, 404);
+        }
 
-      // Validate that the product was in this order
-      const orderItem = order.orderItems.find(
-        (item) => item.productId === productId
-      );
-
-      if (!orderItem) {
-        throw new AppError(req.t.returns.productNotInOrder, 400);
-      }
-
-      // Validate quantity
-      if (quantity > orderItem.quantity) {
-        throw new AppError(
-          `Буцаах тоо ширхэг (${quantity}) захиалсан тоо ширхгээс (${orderItem.quantity}) их байж болохгүй`,
-          400
+        // Validate that the product was in this order
+        const orderItem = order.orderItems.find(
+          (item) => item.productId === productId
         );
+
+        if (!orderItem) {
+          throw new AppError(req.t.returns.productNotInOrder, 400);
+        }
+
+        // Validate quantity
+        if (quantity > orderItem.quantity) {
+          throw new AppError(
+            `Буцаах тоо ширхэг (${quantity}) захиалсан тоо ширхгээс (${orderItem.quantity}) их байж болохгүй`,
+            400
+          );
+        }
       }
 
-      // Create return record
+      // Create return record with new fields
       const newReturn = await tx.return.create({
         data: {
-          orderId,
+          orderId: orderId || null,
           productId,
           quantity,
           reason,
+          customerId: customerId || null,
+          unitPrice: unitPrice || null,
+          expiryDate: expiryDate ? new Date(expiryDate) : null,
+          notes: notes || null,
         },
         include: {
           order: true,
           product: true,
+          customer: true,
         },
       });
 
@@ -68,7 +84,7 @@ export const createReturn = async (
     });
 
     logger.info(
-      `Return created: Return ID ${returnRecord.id}, Product: ${returnRecord.product.nameMongolian}, Quantity: ${quantity}`
+      `Return created: Return ID ${returnRecord.id}, Product: ${returnRecord.product.nameMongolian}, Quantity: ${quantity}${customerId ? `, Customer ID: ${customerId}` : ''}`
     );
 
     res.status(201).json({
@@ -104,6 +120,7 @@ export const getAllReturns = async (
             },
           },
           product: true,
+          customer: true, // Include direct customer relation
         },
         orderBy: { returnDate: "desc" },
       }),
@@ -147,6 +164,7 @@ export const getReturnById = async (
           },
         },
         product: true,
+        customer: true, // Include direct customer relation
       },
     });
 

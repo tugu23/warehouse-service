@@ -12,6 +12,9 @@ export const createCustomer = async (
   try {
     const {
       name,
+      realName,
+      name2,
+      legacyCustomerId,
       organizationName,
       organizationType,
       contactPersonName,
@@ -26,11 +29,15 @@ export const createCustomer = async (
       locationLongitude,
       customerTypeId,
       assignedAgentId,
+      direction,
     } = req.body;
 
     const customer = await prisma.customer.create({
       data: {
         name,
+        realName,
+        name2,
+        legacyCustomerId,
         organizationName,
         organizationType,
         contactPersonName,
@@ -45,6 +52,7 @@ export const createCustomer = async (
         locationLongitude,
         customerTypeId,
         assignedAgentId,
+        direction,
       },
       include: {
         customerType: true,
@@ -113,6 +121,8 @@ export const getAllCustomers = async (
     if (search) {
       where.OR = [
         { name: { contains: search, mode: "insensitive" } },
+        { realName: { contains: search, mode: "insensitive" } },
+        { name2: { contains: search, mode: "insensitive" } },
         { organizationName: { contains: search, mode: "insensitive" } },
         { registrationNumber: { contains: search, mode: "insensitive" } },
         { phoneNumber: { contains: search, mode: "insensitive" } },
@@ -201,6 +211,9 @@ export const updateCustomer = async (
     const { id } = req.params;
     const {
       name,
+      realName,
+      name2,
+      legacyCustomerId,
       organizationName,
       organizationType,
       contactPersonName,
@@ -215,6 +228,7 @@ export const updateCustomer = async (
       locationLongitude,
       customerTypeId,
       assignedAgentId,
+      direction,
     } = req.body;
 
     const customer = await prisma.customer.findUnique({
@@ -229,6 +243,9 @@ export const updateCustomer = async (
       where: { id: parseInt(id) },
       data: {
         name,
+        realName,
+        name2,
+        legacyCustomerId,
         organizationName,
         organizationType,
         contactPersonName,
@@ -243,6 +260,7 @@ export const updateCustomer = async (
         locationLongitude,
         customerTypeId,
         assignedAgentId,
+        direction,
       },
       include: {
         customerType: true,

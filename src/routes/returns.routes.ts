@@ -103,12 +103,16 @@ router.use(authMiddleware, checkRole(["Admin", "Manager"]));
 router.post(
   "/",
   validate([
-    body("orderId").isInt().withMessage("Valid order ID is required"),
+    body("orderId").optional().isInt().withMessage("Valid order ID is required"),
     body("productId").isInt().withMessage("Valid product ID is required"),
     body("quantity")
       .isInt({ min: 1 })
       .withMessage("Quantity must be at least 1"),
     body("reason").optional().isString(),
+    body("customerId").optional().isInt().withMessage("Valid customer ID is required"),
+    body("unitPrice").optional().isDecimal().withMessage("Valid unit price is required"),
+    body("expiryDate").optional().isISO8601().withMessage("Valid expiry date is required"),
+    body("notes").optional().isString(),
   ]),
   createReturn
 );

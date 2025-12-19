@@ -6,6 +6,11 @@ import {
   deactivateProductBatch,
   getProductInventoryBalance,
 } from "../controllers/product-batches.controller";
+import {
+  getExpiringProducts,
+  getExpiredProducts,
+  getExpirationStats,
+} from "../controllers/productBatch.controller";
 import { authMiddleware, checkRole } from "../middleware/auth.middleware";
 import { body, param, query } from "express-validator";
 import { validate } from "../middleware/validation.middleware";
@@ -14,6 +19,55 @@ const router = Router();
 
 // All routes require authentication
 router.use(authMiddleware);
+
+/**
+ * @swagger
+ * /api/products/batches/expiring:
+ *   get:
+ *     summary: Get products with batches expiring soon
+ *     tags: [Product Batches]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: days
+ *         schema:
+ *           type: integer
+ *           default: 30
+ *         description: Number of days to check for expiration
+ *     responses:
+ *       200:
+ *         description: List of expiring batches
+ */
+router.get("/batches/expiring", getExpiringProducts);
+
+/**
+ * @swagger
+ * /api/products/batches/expired:
+ *   get:
+ *     summary: Get products with expired batches
+ *     tags: [Product Batches]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of expired batches
+ */
+router.get("/batches/expired", getExpiredProducts);
+
+/**
+ * @swagger
+ * /api/products/batches/stats:
+ *   get:
+ *     summary: Get expiration statistics
+ *     tags: [Product Batches]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Expiration statistics
+ */
+router.get("/batches/stats", getExpirationStats);
 
 /**
  * @swagger

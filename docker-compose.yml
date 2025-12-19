@@ -26,9 +26,14 @@ services:
 
   # Backend API (Production)
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # Option 1: Build locally (uncomment to use)
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    
+    # Option 2: Use Docker Hub image (recommended for deployment)
+    image: ${DOCKER_USERNAME:-tuguldur}/warehouse-backend:${IMAGE_VERSION:-latest}
+    
     container_name: warehouse-backend
     restart: unless-stopped
     environment:

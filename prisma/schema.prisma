@@ -67,7 +67,7 @@ model Product {
   createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
   categoryId        Int?                    @map("category_id")
   nameKorean        String?                 @map("name_korean") @db.VarChar(255)
-  barcode           String?                 @unique @db.VarChar(100)
+  barcode           String?                 @db.VarChar(100)
   unitsPerBox       Int?                    @map("units_per_box")
   pricePerBox       Decimal?                @map("price_per_box") @db.Decimal(10, 2)
   netWeight         Decimal?                @map("net_weight") @db.Decimal(10, 3)
@@ -78,6 +78,7 @@ model Product {
   orderItems        OrderItem[]
   batches           ProductBatch[]
   salesAnalytics    ProductSalesAnalytics[]
+  prices            ProductPrice[]
   category          Category?               @relation(fields: [categoryId], references: [id])
   supplier          Supplier?               @relation(fields: [supplierId], references: [id])
   returns           Return[]
@@ -86,9 +87,10 @@ model Product {
 }
 
 model CustomerType {
-  id        Int        @id @default(autoincrement())
-  typeName  String     @map("type_name") @db.VarChar(100)
+  id        Int            @id @default(autoincrement())
+  typeName  String         @map("type_name") @db.VarChar(100)
   customers Customer[]
+  prices    ProductPrice[]
 
   @@map("customer_types")
 }
@@ -96,6 +98,9 @@ model CustomerType {
 model Customer {
   id                 Int            @id @default(autoincrement())
   name               String         @db.VarChar(255)
+  realName           String?        @map("real_name") @db.VarChar(255)
+  name2              String?        @map("name_2") @db.VarChar(255)
+  legacyCustomerId   Int?           @map("legacy_customer_id")
   address            String?
   phoneNumber        String?        @map("phone_number") @db.VarChar(50)
   locationLatitude   Float?         @map("location_latitude")
@@ -110,10 +115,12 @@ model Customer {
   detailedAddress    String?        @map("detailed_address")
   isVatPayer         Boolean        @default(false) @map("is_vat_payer")
   paymentTerms       String?        @map("payment_terms") @db.VarChar(100)
+  direction          String?        @db.VarChar(100)
   assignedAgent      Employee?      @relation("AssignedAgent", fields: [assignedAgentId], references: [id])
   customerType       CustomerType?  @relation(fields: [customerTypeId], references: [id])
   deliveryPlans      DeliveryPlan[]
   orders             Order[]
+  returns            Return[]
 
   @@map("customers")
 }
@@ -166,14 +173,19 @@ model OrderItem {
 }
 
 model Return {
-  id         Int      @id @default(autoincrement())
-  orderId    Int      @map("order_id")
-  productId  Int      @map("product_id")
-  quantity   Int
-  reason     String?
-  returnDate DateTime @default(now()) @map("return_date") @db.Timestamptz(3)
-  order      Order    @relation(fields: [orderId], references: [id])
-  product    Product  @relation(fields: [productId], references: [id])
+  id          Int       @id @default(autoincrement())
+  orderId     Int?      @map("order_id")
+  productId   Int       @map("product_id")
+  customerId  Int?      @map("customer_id")
+  quantity    Int
+  unitPrice   Decimal?  @map("unit_price") @db.Decimal(10, 2)
+  reason      String?
+  returnDate  DateTime  @default(now()) @map("return_date") @db.Timestamptz(3)
+  expiryDate  DateTime? @map("expiry_date") @db.Timestamptz(3)
+  notes       String?
+  order       Order?    @relation(fields: [orderId], references: [id])
+  product     Product   @relation(fields: [productId], references: [id])
+  customer    Customer? @relation(fields: [customerId], references: [id])
 
   @@map("returns")
 }
@@ -336,4 +348,18 @@ enum StoreType {
 enum OrderType {
   Market
   Store
+}
+
+model ProductPrice {
+  id              Int          @id @default(autoincrement())
+  productId       Int          @map("product_id")
+  customerTypeId  Int          @map("customer_type_id")
+  price           Decimal      @db.Decimal(10, 2)
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  product         Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customerType    CustomerType @relation(fields: [customerTypeId], references: [id])
+
+  @@unique([productId, customerTypeId])
+  @@map("product_prices")
 }

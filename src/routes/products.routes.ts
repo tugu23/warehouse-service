@@ -4,6 +4,7 @@ import {
   createProduct,
   getAllProducts,
   getProductById,
+  getProductByBarcode,
   updateProduct,
   adjustInventory,
 } from "../controllers/products.controller";
@@ -184,6 +185,57 @@ router.post(
  *         $ref: '#/components/responses/Unauthorized'
  */
 router.get("/", getAllProducts);
+
+/**
+ * @swagger
+ * /api/products/barcode/{barcode}:
+ *   get:
+ *     summary: Get product by barcode
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: barcode
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Product barcode
+ *     responses:
+ *       200:
+ *         description: Product details or list of products if multiple found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   oneOf:
+ *                     - type: object
+ *                       properties:
+ *                         product:
+ *                           $ref: '#/components/schemas/Product'
+ *                     - type: object
+ *                       properties:
+ *                         products:
+ *                           type: array
+ *                           items:
+ *                             $ref: '#/components/schemas/Product'
+ *                         count:
+ *                           type: integer
+ *                         message:
+ *                           type: string
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ */
+router.get(
+  "/barcode/:barcode",
+  validate([param("barcode").notEmpty().withMessage("Barcode is required")]),
+  getProductByBarcode
+);
 
 /**
  * @swagger

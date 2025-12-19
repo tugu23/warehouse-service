@@ -101,6 +101,7 @@ backend/
 
 ### Option 1: Docker/Podman (Recommended) 🐳
 
+#### Local Development:
 ```bash
 # Quick start (auto-detects Docker or Podman)
 chmod +x scripts/docker-setup.sh
@@ -117,7 +118,19 @@ podman-compose exec backend npx prisma migrate deploy
 podman-compose exec backend npx ts-node prisma/seed.ts
 ```
 
-See [DOCKER.md](DOCKER.md) for complete Docker/Podman documentation.
+#### Production Deployment via Docker Hub:
+```bash
+# Mac: Build and push to Docker Hub
+./deploy-to-dockerhub.sh
+
+# Windows: Pull and run from Docker Hub
+# PowerShell-д:
+.\deploy-windows.ps1
+```
+
+**📖 Дэлгэрэнгүй заавар:**
+- [DOCKER.md](DOCKER.md) - Local Docker/Podman setup
+- [DOCKER_HUB_DEPLOYMENT.md](DOCKER_HUB_DEPLOYMENT.md) - Docker Hub deployment (Mac → Windows)
 
 ### Option 2: Manual Installation
 

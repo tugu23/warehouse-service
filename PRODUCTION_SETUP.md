@@ -51,3 +51,4 @@ This implementation follows the [POS API 3.0 Integration Guide](https://develope
 - **Endpoint:** `PUT /bill`
 - **Authentication:** HMAC-SHA256
 
+

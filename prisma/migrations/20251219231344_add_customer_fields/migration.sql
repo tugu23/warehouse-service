@@ -1,0 +1,6 @@
+-- AlterTable
+ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "real_name" VARCHAR(255);
+ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "name_2" VARCHAR(255);
+ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "legacy_customer_id" INTEGER;
+ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "direction" VARCHAR(100);
+
