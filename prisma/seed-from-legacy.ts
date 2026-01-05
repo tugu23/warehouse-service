@@ -330,7 +330,18 @@ async function main() {
       for (const productData of batch) {
         try {
           const { legacyId, ...data } = productData;
-          const product = await prisma.product.create({ data });
+          // Try to find existing product by barcode or name
+          let product = await prisma.product.findFirst({
+            where: {
+              OR: [
+                { barcode: data.barcode || undefined },
+                { nameMongolian: data.nameMongolian },
+              ],
+            },
+          });
+          if (!product) {
+            product = await prisma.product.create({ data });
+          }
           idMapper.set("baraa", legacyId, product.id);
         } catch (error) {
           console.error(`  ⚠️  Error creating product:`, error);
@@ -348,29 +359,37 @@ async function main() {
   console.log("\n👥 Phase 4: Creating sales agents...");
   const borluulagchData = loadJsonData("borluulagch");
   const defaultPassword = await bcrypt.hash("agent123", 10);
+  let agentsCreated = 0;
 
   for (const row of borluulagchData.rows) {
     const obj = mapRowToObject(borluulagchData.columns, row);
 
     try {
       const email = `agent${obj.id}@warehouse.com`;
-      const employee = await prisma.employee.create({
-        data: {
-          name: obj.b_ner || `Борлуулагч ${obj.id}`,
-          email: email,
-          phoneNumber: cleanPhoneNumber(obj.b_utas),
-          passwordHash: defaultPassword,
-          roleId: salesAgentRole.id,
-          isActive: true,
-        },
+      // Check if employee already exists
+      let employee = await prisma.employee.findUnique({
+        where: { email },
       });
+      if (!employee) {
+        employee = await prisma.employee.create({
+          data: {
+            name: obj.b_ner || `Борлуулагч ${obj.id}`,
+            email: email,
+            phoneNumber: cleanPhoneNumber(obj.b_utas),
+            passwordHash: defaultPassword,
+            roleId: salesAgentRole.id,
+            isActive: true,
+          },
+        });
+      }
       idMapper.set("borluulagch", obj.id, employee.id);
+      agentsCreated++;
     } catch (error) {
       console.error(`  ⚠️  Error creating agent ${obj.id}:`, error);
     }
   }
 
-  console.log(`  ✓ Sales agents created: ${borluulagchData.rows.length}`);
+  console.log(`  ✓ Sales agents mapped: ${agentsCreated}`);
 
   // Create admin user
   console.log("  Creating admin user...");
@@ -637,6 +656,15 @@ async function main() {
   console.log("\n🛒 Phase 9: Creating orders...");
   const zahialgaData = loadJsonData("zahialga");
 
+  // Load vldegdel data to map vldegdeliin_id -> baraanii_id
+  const vldegdelData = loadJsonData("vldegdel");
+  const vldegdelToBaraaMap = new Map<number, number>();
+  for (const row of vldegdelData.rows) {
+    const vldegdelObj = mapRowToObject(vldegdelData.columns, row);
+    vldegdelToBaraaMap.set(vldegdelObj.id, vldegdelObj.baraanii_id);
+  }
+  console.log(`  Loaded ${vldegdelToBaraaMap.size} vldegdel -> baraa mappings`);
+
   // Group order items by customer, date, and agent to create orders
   const orderGroups = new Map<string, any[]>();
 
@@ -649,8 +677,13 @@ async function main() {
     const agentId = obj.borluulagch_id
       ? idMapper.get("borluulagch", obj.borluulagch_id)
       : null;
-    const productId = obj.padaanii_id
-      ? idMapper.get("baraa", obj.padaanii_id)
+
+    // Get product ID through vldegdel mapping (vldegdeliin_id -> baraanii_id -> product)
+    const legacyBaraaId = obj.vldegdeliin_id
+      ? vldegdelToBaraaMap.get(obj.vldegdeliin_id)
+      : null;
+    const productId = legacyBaraaId
+      ? idMapper.get("baraa", legacyBaraaId)
       : null;
 
     if (!customerId || !agentId || !productId) continue;
@@ -680,17 +713,14 @@ async function main() {
     `  Found ${orderGroups.size} order groups from ${zahialgaData.rows.length} items`
   );
 
-  // Sample orders - take only recent ones or every Nth to avoid overwhelming
-  const orderGroupsArray = Array.from(orderGroups.entries());
-  const sampledOrders = orderGroupsArray
-    .filter((_, index) => index % 100 === 0)
-    .slice(0, 1000);
+  // Import all orders
+  const allOrders = Array.from(orderGroups.entries());
 
   let ordersCreated = 0;
   let orderItemsCreated = 0;
 
   await batchProcess(
-    sampledOrders,
+    allOrders,
     50,
     async (batch) => {
       for (const [groupKey, items] of batch) {
@@ -755,7 +785,7 @@ async function main() {
   );
 
   console.log(
-    `  ✓ Orders created: ${ordersCreated} with ${orderItemsCreated} items (sampled)`
+    `  ✓ Orders created: ${ordersCreated} with ${orderItemsCreated} items`
   );
 
   // ============================================================================

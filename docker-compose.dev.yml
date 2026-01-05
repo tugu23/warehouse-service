@@ -43,7 +43,7 @@ services:
       PRISMA_CLI_QUERY_ENGINE_TYPE: binary
       PRISMA_CLIENT_ENGINE_TYPE: binary
     ports:
-      - "${API_PORT:-3000}:3000"
+      - "${API_PORT:-4000}:3000"
     depends_on:
       postgres:
         condition: service_healthy
