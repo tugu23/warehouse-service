@@ -1,5 +1,7 @@
-import prisma from "../src/db/prisma";
+import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+
+const prisma = new PrismaClient();
 
 async function main() {
   console.log("Starting database seeding...");
@@ -48,7 +50,7 @@ async function main() {
       address: "Ulaanbaatar, Mongolia",
       storeType: "Market",
       locationLatitude: 47.918869,
-      locationLongitude: 106.917580,
+      locationLongitude: 106.91758,
       isActive: true,
     },
   });

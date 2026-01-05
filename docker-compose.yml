@@ -32,7 +32,7 @@ services:
     #   dockerfile: Dockerfile
     
     # Option 2: Use Docker Hub image (recommended for deployment)
-    image: ${DOCKER_USERNAME:-tuguldur}/warehouse-backend:${IMAGE_VERSION:-latest}
+    image: tmshuu/warehouse-service:latest
     
     container_name: warehouse-backend
     restart: unless-stopped

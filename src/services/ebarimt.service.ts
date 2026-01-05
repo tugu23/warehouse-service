@@ -275,6 +275,216 @@ class EBarimtService {
     // Standard E-Barimt QR format
     return `${billId}|${date}|${amount}`;
   }
+
+  /**
+   * Check E-Barimt system status
+   */
+  async checkStatus(): Promise<{
+    success: boolean;
+    online: boolean;
+    message: string;
+  }> {
+    if (!this.isEnabled) {
+      return {
+        success: true,
+        online: false,
+        message: "E-Barimt service is disabled",
+      };
+    }
+
+    try {
+      // Attempt a health check call to the E-Barimt API
+      const response = await this.client.get("/api/info", { timeout: 5000 });
+      return {
+        success: true,
+        online: true,
+        message: "E-Barimt system is online",
+      };
+    } catch (error) {
+      logger.error("E-Barimt status check failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        success: true,
+        online: false,
+        message: `E-Barimt system unavailable: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      };
+    }
+  }
+
+  /**
+   * Prepare order data for E-Barimt registration
+   */
+  prepareOrderData(order: {
+    orderNumber: string;
+    customer?: { name?: string; registrationNumber?: string | null } | null;
+    orderItems: Array<{
+      product: { nameMongolian: string; barcode?: string | null };
+      quantity: number;
+      unitPrice: number | { toNumber?: () => number };
+    }>;
+    totalAmount?: number | { toNumber?: () => number } | null;
+    paymentMethod?: string | null;
+  }): {
+    orderNumber: string;
+    customer: { name: string; registrationNumber?: string | null };
+    items: Array<{
+      productName: string;
+      barcode?: string;
+      quantity: number;
+      unitPrice: number;
+      total: number;
+    }>;
+    subtotal: number;
+    vat: number;
+    total: number;
+    paymentMethod: string;
+  } {
+    // Helper to convert Decimal to number
+    const toNum = (
+      val: number | { toNumber?: () => number } | null | undefined
+    ): number => {
+      if (val === null || val === undefined) return 0;
+      if (typeof val === "number") return val;
+      if (typeof val.toNumber === "function") return val.toNumber();
+      return Number(val);
+    };
+
+    const total = toNum(order.totalAmount);
+    const subtotal = total / 1.1; // Assuming 10% VAT included
+    const vat = total - subtotal;
+
+    return {
+      orderNumber: order.orderNumber,
+      customer: {
+        name: order.customer?.name || "Жирэмсэн худалдан авагч",
+        registrationNumber: order.customer?.registrationNumber,
+      },
+      items: order.orderItems.map((item) => {
+        const unitPrice = toNum(item.unitPrice);
+        const itemTotal = unitPrice * item.quantity;
+        return {
+          productName: item.product.nameMongolian,
+          barcode: item.product.barcode || undefined,
+          quantity: item.quantity,
+          unitPrice,
+          total: itemTotal,
+        };
+      }),
+      subtotal,
+      vat,
+      total,
+      paymentMethod: order.paymentMethod || "Cash",
+    };
+  }
+
+  /**
+   * Register a bill with E-Barimt
+   */
+  async registerBill(data: {
+    orderNumber: string;
+    customer: { name: string; registrationNumber?: string | null };
+    items: Array<{
+      productName: string;
+      barcode?: string;
+      quantity: number;
+      unitPrice: number;
+      total: number;
+    }>;
+    subtotal: number;
+    vat: number;
+    total: number;
+    paymentMethod: string;
+  }): Promise<{
+    success: boolean;
+    id?: string;
+    billId?: string;
+    lottery?: string;
+    qrData?: string;
+    message?: string;
+  }> {
+    const result = await this.registerReceipt(data);
+
+    if (result.success && result.data) {
+      return {
+        success: true,
+        id: result.data.id,
+        billId: result.data.billId,
+        lottery: result.data.lottery,
+        qrData: result.data.qrData,
+        message: "Bill registered successfully",
+      };
+    }
+
+    return {
+      success: false,
+      message: result.message || result.errorMessage || "Registration failed",
+    };
+  }
+
+  /**
+   * Get bill details from E-Barimt
+   */
+  async getBill(billId: string): Promise<{
+    success: boolean;
+    billId?: string;
+    data?: unknown;
+    message?: string;
+  }> {
+    if (!this.isEnabled) {
+      return {
+        success: false,
+        message: "E-Barimt service is disabled",
+      };
+    }
+
+    try {
+      const response = await this.client.get(`/api/bill/${billId}`);
+      return {
+        success: true,
+        billId,
+        data: response.data,
+        message: "Bill retrieved successfully",
+      };
+    } catch (error) {
+      logger.error("Error getting bill from E-Barimt", {
+        error: error instanceof Error ? error.message : String(error),
+        billId,
+      });
+      return {
+        success: false,
+        message: `Failed to get bill: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      };
+    }
+  }
+
+  /**
+   * Return/cancel a bill in E-Barimt
+   */
+  async returnBill(billId: string): Promise<{
+    success: boolean;
+    id?: string;
+    message?: string;
+  }> {
+    const result = await this.returnReceipt(billId);
+
+    if (result.success && result.data) {
+      return {
+        success: true,
+        id: result.data.id,
+        message: "Bill returned successfully",
+      };
+    }
+
+    return {
+      success: false,
+      message: result.message || result.errorMessage || "Return failed",
+    };
+  }
 }
 
 export default new EBarimtService();

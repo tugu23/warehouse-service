@@ -17,7 +17,7 @@ COPY package*.json ./
 COPY prisma ./prisma/
 
 # Install dependencies
-RUN npm ci
+RUN npm install
 
 # Copy source code
 COPY . .
@@ -44,7 +44,7 @@ ENV PRISMA_CLIENT_ENGINE_TYPE=binary
 COPY package*.json ./
 COPY prisma ./prisma/
 
-RUN npm ci --production
+RUN npm install
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist

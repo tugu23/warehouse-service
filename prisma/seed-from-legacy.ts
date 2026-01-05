@@ -3,10 +3,12 @@
  * Imports data from parsed SQL dump into new Prisma schema
  */
 
-import prisma from "../src/db/prisma";
+import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import * as fs from "fs";
 import * as path from "path";
+
+const prisma = new PrismaClient();
 
 // ID Mapping System
 class IdMapper {
@@ -449,12 +451,12 @@ async function main() {
             registrationNumber: data.registrationNumber || "",
             address: data.address || "",
           };
-          
+
           // Check if customer already exists
           const existing = await prisma.customer.findFirst({
             where: uniqueKey,
           });
-          
+
           let customer;
           if (existing) {
             customer = existing;
@@ -462,7 +464,7 @@ async function main() {
           } else {
             customer = await prisma.customer.create({ data });
           }
-          
+
           idMapper.set("hariltsagch", legacyId, customer.id);
         } catch (error) {
           console.error(`  ⚠️  Error creating customer:`, error);
