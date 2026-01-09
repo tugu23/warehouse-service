@@ -197,31 +197,26 @@ async function main() {
     const obj = mapRowToObject(turulHariltsagchData.columns, row);
     try {
       const typeName = obj.turul || `Төрөл ${obj.id}`;
-      const customerType = await prisma.customerType.create({
-        data: {
-          typeName: typeName,
+      // Check if customer type already exists by ID or name
+      let customerType = await prisma.customerType.findFirst({
+        where: {
+          OR: [{ id: obj.id }, { typeName: typeName }],
         },
       });
+      if (!customerType) {
+        customerType = await prisma.customerType.create({
+          data: {
+            id: obj.id, // Use legacy ID
+            typeName: typeName,
+          },
+        });
+      }
       customerTypeMap.set(obj.id, customerType.id);
       organizationTypeMap.set(obj.id, typeName); // Store organization type name
       idMapper.set("turul_hariltsagch", obj.id, customerType.id);
     } catch (error) {
       console.error(`  ⚠️  Error creating customer type ${obj.id}:`, error);
     }
-  }
-
-  // Ensure default types exist
-  if (!customerTypeMap.has(1)) {
-    const wholesale = await prisma.customerType.create({
-      data: { typeName: "Бөөний" },
-    });
-    customerTypeMap.set(1, wholesale.id);
-  }
-  if (!customerTypeMap.has(2)) {
-    const retail = await prisma.customerType.create({
-      data: { typeName: "Жижиглэн" },
-    });
-    customerTypeMap.set(2, retail.id);
   }
 
   console.log(`  ✓ Customer types created: ${customerTypeMap.size}`);
@@ -305,6 +300,7 @@ async function main() {
     const categoryId = obj.turul ? idMapper.get("turul", obj.turul) : null;
 
     products.push({
+      id: obj.id, // Use legacy ID as product ID
       nameMongolian: obj.mon_ner || "Нэргүй бараа",
       nameEnglish: obj.eng_ner || null,
       nameKorean: obj.ko_ner || null,
@@ -319,7 +315,6 @@ async function main() {
       pricePerBox: parseDecimal(obj.price_box_d),
       netWeight: parseDecimal(obj.tsewer_jin),
       grossWeight: parseDecimal(obj.bohir_jin),
-      legacyId: obj.id, // Store for mapping
     });
   }
 
@@ -329,22 +324,25 @@ async function main() {
     async (batch) => {
       for (const productData of batch) {
         try {
-          const { legacyId, ...data } = productData;
-          // Try to find existing product by barcode or name
+          // Try to find existing product by ID or barcode or name
           let product = await prisma.product.findFirst({
             where: {
               OR: [
-                { barcode: data.barcode || undefined },
-                { nameMongolian: data.nameMongolian },
+                { id: productData.id },
+                { barcode: productData.barcode || undefined },
+                { nameMongolian: productData.nameMongolian },
               ],
             },
           });
           if (!product) {
-            product = await prisma.product.create({ data });
+            product = await prisma.product.create({ data: productData });
           }
-          idMapper.set("baraa", legacyId, product.id);
+          idMapper.set("baraa", productData.id, product.id);
         } catch (error) {
-          console.error(`  ⚠️  Error creating product:`, error);
+          console.error(
+            `  ⚠️  Error creating product ${productData.id}:`,
+            error
+          );
         }
       }
     },
@@ -651,188 +649,14 @@ async function main() {
   console.log(`  ✓ Agent locations created: ${locations.length} (sampled)`);
 
   // ============================================================================
-  // PHASE 9: Orders and Order Items
+  // PHASE 9: Orders - SKIPPED (use seed:orders for orders)
   // ============================================================================
-  console.log("\n🛒 Phase 9: Creating orders...");
-  const zahialgaData = loadJsonData("zahialga");
-
-  // Load vldegdel data to map vldegdeliin_id -> baraanii_id
-  const vldegdelData = loadJsonData("vldegdel");
-  const vldegdelToBaraaMap = new Map<number, number>();
-  for (const row of vldegdelData.rows) {
-    const vldegdelObj = mapRowToObject(vldegdelData.columns, row);
-    vldegdelToBaraaMap.set(vldegdelObj.id, vldegdelObj.baraanii_id);
-  }
-  console.log(`  Loaded ${vldegdelToBaraaMap.size} vldegdel -> baraa mappings`);
-
-  // Group order items by customer, date, and agent to create orders
-  const orderGroups = new Map<string, any[]>();
-
-  for (const row of zahialgaData.rows) {
-    const obj = mapRowToObject(zahialgaData.columns, row);
-
-    const customerId = obj.baiguulgiin_id
-      ? idMapper.get("hariltsagch", obj.baiguulgiin_id)
-      : null;
-    const agentId = obj.borluulagch_id
-      ? idMapper.get("borluulagch", obj.borluulagch_id)
-      : null;
-
-    // Get product ID through vldegdel mapping (vldegdeliin_id -> baraanii_id -> product)
-    const legacyBaraaId = obj.vldegdeliin_id
-      ? vldegdelToBaraaMap.get(obj.vldegdeliin_id)
-      : null;
-    const productId = legacyBaraaId
-      ? idMapper.get("baraa", legacyBaraaId)
-      : null;
-
-    if (!customerId || !agentId || !productId) continue;
-
-    const orderDate = parseDate(obj.ognoo) || new Date();
-    const dateKey = orderDate.toISOString().split("T")[0];
-    const groupKey = `${customerId}-${agentId}-${dateKey}`;
-
-    if (!orderGroups.has(groupKey)) {
-      orderGroups.set(groupKey, []);
-    }
-
-    orderGroups.get(groupKey)!.push({
-      customerId,
-      agentId,
-      orderDate,
-      productId,
-      quantity: obj.too_shirheg || 1,
-      unitPrice: parseDecimal(obj.negj_vne) || 0,
-      totalPrice: parseDecimal(obj.niit_vne) || 0,
-      paymentMethod: obj.tulbur_helber || "Cash",
-      isPaid: parseBoolean(obj.tulbur_hiisen_eseh),
-    });
-  }
-
-  console.log(
-    `  Found ${orderGroups.size} order groups from ${zahialgaData.rows.length} items`
-  );
-
-  // Import all orders
-  const allOrders = Array.from(orderGroups.entries());
+  console.log("\n🛒 Phase 9: Orders - SKIPPED");
+  console.log("  💡 Захиалгуудыг оруулахын тулд: npm run seed:orders");
 
   let ordersCreated = 0;
   let orderItemsCreated = 0;
-
-  await batchProcess(
-    allOrders,
-    50,
-    async (batch) => {
-      for (const [groupKey, items] of batch) {
-        try {
-          const firstItem = items[0];
-
-          // Map payment method
-          let paymentMethod = "Cash";
-          const paymentStr = String(firstItem.paymentMethod).toLowerCase();
-          if (paymentStr.includes("зээл") || paymentStr.includes("падаан")) {
-            paymentMethod = "Credit";
-          } else if (paymentStr.includes("данс")) {
-            paymentMethod = "BankTransfer";
-          }
-
-          // Calculate totals
-          const subtotal = items.reduce(
-            (sum, item) => sum + (item.totalPrice || 0),
-            0
-          );
-          const vatAmount = 0; // Legacy system doesn't have VAT breakdown
-          const totalAmount = subtotal;
-
-          // Create order
-          const order = await prisma.order.create({
-            data: {
-              customerId: firstItem.customerId,
-              agentId: firstItem.agentId,
-              orderDate: firstItem.orderDate,
-              orderType: "Store",
-              status: "Completed",
-              subtotalAmount: subtotal,
-              vatAmount: vatAmount,
-              totalAmount: totalAmount,
-              paymentMethod: paymentMethod as any,
-              paymentStatus: firstItem.isPaid ? "Paid" : "Pending",
-              paidAmount: firstItem.isPaid ? totalAmount : 0,
-              remainingAmount: firstItem.isPaid ? 0 : totalAmount,
-            },
-          });
-
-          ordersCreated++;
-
-          // Create order items
-          for (const item of items) {
-            await prisma.orderItem.create({
-              data: {
-                orderId: order.id,
-                productId: item.productId,
-                quantity: item.quantity,
-                unitPrice: item.unitPrice,
-              },
-            });
-            orderItemsCreated++;
-          }
-        } catch (error) {
-          console.error(`  ⚠️  Error creating order group:`, error);
-        }
-      }
-    },
-    "orders"
-  );
-
-  console.log(
-    `  ✓ Orders created: ${ordersCreated} with ${orderItemsCreated} items`
-  );
-
-  // ============================================================================
-  // PHASE 10: Returns
-  // ============================================================================
-  console.log("\n🔄 Phase 10: Creating returns...");
-
-  // Create sample returns from orders
-  const recentOrders = await prisma.order.findMany({
-    take: 50,
-    include: {
-      orderItems: {
-        include: {
-          product: true,
-        },
-      },
-    },
-  });
-
   let returnsCreated = 0;
-  for (const order of recentOrders) {
-    // Randomly create returns for some order items
-    if (Math.random() > 0.8 && order.orderItems.length > 0) {
-      const item = order.orderItems[0];
-      const returnQty = Math.min(
-        item.quantity,
-        Math.floor(Math.random() * 3) + 1
-      );
-
-      try {
-        await prisma.return.create({
-          data: {
-            orderId: order.id,
-            productId: item.productId,
-            quantity: returnQty,
-            reason: "Чанаргүй бараа",
-            returnDate: new Date(),
-          },
-        });
-        returnsCreated++;
-      } catch (error) {
-        // Skip if error
-      }
-    }
-  }
-
-  console.log(`  ✓ Returns created: ${returnsCreated}`);
 
   // ============================================================================
   // PHASE 11: Inventory Balances

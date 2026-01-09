@@ -48,15 +48,20 @@ RUN npm install
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
+
+# Copy Prisma client and engine binaries
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+
+# Copy the schema file for Prisma
+COPY --from=builder /app/prisma/schema.prisma ./prisma/schema.prisma
 
 # Create logs directory
 RUN mkdir -p logs
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
+  adduser -S nodejs -u 1001
 
 # Change ownership
 RUN chown -R nodejs:nodejs /app

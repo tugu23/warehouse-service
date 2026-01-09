@@ -147,11 +147,28 @@ export const createOrder = async (
           );
         }
 
-        // Determine price based on customer type
-        const unitPrice =
-          customer.customerTypeId === 2
-            ? product.priceWholesale || product.priceRetail
-            : product.priceRetail;
+        // Determine price based on customer type from ProductPrice table
+        let unitPrice: Prisma.Decimal | null = null;
+
+        // First, try to get price from ProductPrice table based on customer type
+        if (customer.customerTypeId) {
+          const productPrice = await tx.productPrice.findUnique({
+            where: {
+              productId_customerTypeId: {
+                productId: item.productId,
+                customerTypeId: customer.customerTypeId,
+              },
+            },
+          });
+          if (productPrice) {
+            unitPrice = productPrice.price;
+          }
+        }
+
+        // Fallback to product's default prices if no ProductPrice found
+        if (!unitPrice) {
+          unitPrice = product.priceRetail || product.priceWholesale;
+        }
 
         if (!unitPrice) {
           throw new AppError(
@@ -353,9 +370,22 @@ export const createOrder = async (
       }
     }
 
+    // Add subtotal to orderItems for frontend
+    const orderWithSubtotals = {
+      ...order,
+      createdBy: order.agent, // Alias for frontend
+      createdAt: order.orderDate, // Alias for frontend
+      orderItems: order.orderItems.map((item) => ({
+        ...item,
+        subtotal: new Prisma.Decimal(item.unitPrice.toString()).mul(
+          item.quantity
+        ),
+      })),
+    };
+
     res.status(201).json({
       status: "success",
-      data: { order },
+      data: { order: orderWithSubtotals },
     });
   } catch (error) {
     next(error);
@@ -370,8 +400,11 @@ export const getAllOrders = async (
   try {
     const authReq = req as AuthRequest;
     const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const skip = (page - 1) * limit;
+    // Support 'all' as limit value to get all records (use with caution for large datasets)
+    const limitParam = req.query.limit as string;
+    const fetchAll = limitParam === "all" || limitParam === "-1";
+    const limit = fetchAll ? undefined : parseInt(limitParam) || 10;
+    const skip = fetchAll ? undefined : (page - 1) * (limit || 10);
     const status = req.query.status as string;
     const customerId = req.query.customerId as string;
     const paymentStatus = req.query.paymentStatus as string;
@@ -420,8 +453,8 @@ export const getAllOrders = async (
     const [orders, total] = await Promise.all([
       prisma.order.findMany({
         where,
-        skip,
-        take: limit,
+        ...(skip !== undefined && { skip }),
+        ...(limit !== undefined && { take: limit }),
         include: {
           customer: true,
           agent: {
@@ -442,17 +475,24 @@ export const getAllOrders = async (
       ...order,
       createdBy: order.agent, // Alias for frontend
       createdAt: order.orderDate, // Alias for frontend (orderDate as createdAt)
+      orderItems: order.orderItems.map((item) => ({
+        ...item,
+        subtotal: new Prisma.Decimal(item.unitPrice.toString()).mul(
+          item.quantity
+        ), // Calculate subtotal
+      })),
     }));
 
+    const actualLimit = limit || total;
     res.json({
       status: "success",
       data: {
         orders: ordersWithAliases,
         pagination: {
-          page,
-          limit,
+          page: fetchAll ? 1 : page,
+          limit: fetchAll ? total : actualLimit,
           total,
-          totalPages: Math.ceil(total / limit),
+          totalPages: fetchAll ? 1 : Math.ceil(total / actualLimit),
         },
       },
     });
@@ -500,6 +540,12 @@ export const getOrderById = async (
       ...order,
       createdBy: order.agent, // Alias for frontend
       createdAt: order.orderDate, // Alias for frontend (orderDate as createdAt)
+      orderItems: order.orderItems.map((item) => ({
+        ...item,
+        subtotal: new Prisma.Decimal(item.unitPrice.toString()).mul(
+          item.quantity
+        ), // Calculate subtotal
+      })),
     };
 
     res.json({

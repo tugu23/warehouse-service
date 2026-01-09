@@ -16,12 +16,14 @@
     "seed:vne": "ts-node --transpile-only --compiler-options '{\"module\":\"commonjs\"}' prisma/seed-vne.ts",
     "seed:vne-butsaalt": "ts-node --transpile-only --compiler-options '{\"module\":\"commonjs\"}' prisma/seed-vne-butsaalt.ts",
     "seed:legacy": "ts-node --transpile-only --compiler-options '{\"module\":\"commonjs\"}' prisma/seed-from-legacy.ts",
+    "seed:orders": "ts-node --transpile-only --compiler-options '{\"module\":\"commonjs\"}' prisma/seed-orders.ts",
+    "db:cleanup": "ts-node --transpile-only --compiler-options '{\"module\":\"commonjs\"}' prisma/cleanup-duplicates.ts",
     "test": "NODE_ENV=test jest --verbose --coverage",
     "test:watch": "NODE_ENV=test jest --watch",
     "test:ci": "NODE_ENV=test jest --ci --coverage --maxWorkers=2"
   },
   "prisma": {
-    "seed": "ts-node --transpile-only --compiler-options '{\"module\":\"commonjs\"}' prisma/seed.ts"
+    "seed": "npm run seed"
   },
   "keywords": [
     "warehouse",

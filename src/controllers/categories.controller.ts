@@ -48,8 +48,10 @@ export const getAllCategories = async (
 ): Promise<void> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const skip = (page - 1) * limit;
+    const limitParam = req.query.limit as string;
+    const fetchAll = limitParam === 'all' || limitParam === '-1';
+    const limit = fetchAll ? undefined : (parseInt(limitParam) || 10);
+    const skip = fetchAll ? undefined : (page - 1) * (limit || 10);
     const search = req.query.search as string;
 
     const where: any = {};
@@ -65,8 +67,8 @@ export const getAllCategories = async (
     const [categories, total] = await Promise.all([
       prisma.category.findMany({
         where,
-        skip,
-        take: limit,
+        ...(skip !== undefined && { skip }),
+        ...(limit !== undefined && { take: limit }),
         include: {
           products: {
             select: {
@@ -81,15 +83,16 @@ export const getAllCategories = async (
       prisma.category.count({ where }),
     ]);
 
+    const actualLimit = limit || total;
     res.json({
       status: "success",
       data: {
         categories,
         pagination: {
-          page,
-          limit,
+          page: fetchAll ? 1 : page,
+          limit: fetchAll ? total : actualLimit,
           total,
-          totalPages: Math.ceil(total / limit),
+          totalPages: fetchAll ? 1 : Math.ceil(total / actualLimit),
         },
       },
     });

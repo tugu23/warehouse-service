@@ -49,3 +49,7 @@ coverage/
 tmp/
 temp/
 
+# Large seed data files (not needed in production image)
+prisma/parsed-data/zahialga.json
+prisma/parsed-data/vldegdel_sar.json
+
