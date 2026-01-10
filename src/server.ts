@@ -2,6 +2,7 @@ import app from "./app";
 import { config } from "./config";
 import logger from "./utils/logger";
 import prisma from "./db/prisma";
+import schedulerService from "./services/scheduler.service";
 
 const PORT = config.port;
 
@@ -10,6 +11,10 @@ const gracefulShutdown = async (signal: string) => {
   logger.info(`${signal} received. Starting graceful shutdown...`);
 
   try {
+    // Stop scheduler service
+    schedulerService.shutdown();
+    logger.info("Scheduler service stopped");
+
     // Close database connection
     await prisma.$disconnect();
     logger.info("Database connection closed");
@@ -28,11 +33,16 @@ const startServer = async () => {
     await prisma.$connect();
     logger.info("Database connected successfully");
 
+    // Initialize scheduler for eBarimt automated tasks
+    schedulerService.initialize();
+    logger.info("Scheduler service initialized");
+
     app.listen(PORT, () => {
       logger.info(
         `Server is running on port ${PORT} in ${config.nodeEnv} mode`
       );
       logger.info(`Health check: http://localhost:${PORT}/health`);
+      logger.info("eBarimt scheduler active: daily send, lottery check, auto-register");
     });
   } catch (error) {
     logger.error("Failed to start server:", error);

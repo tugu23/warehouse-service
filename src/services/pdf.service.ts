@@ -22,6 +22,7 @@ interface ReceiptData {
     name: string;
     address?: string | null;
     phoneNumber?: string | null;
+    registrationNumber?: string | null; // ТТД - for B2B detection
   };
   agent: {
     name: string;
@@ -31,6 +32,7 @@ interface ReceiptData {
   subtotal: number;
   vat: number;
   total: number;
+  cityTax?: number; // НХАТ
   paymentMethod: string;
   paymentStatus: string;
   paidAmount: number;
@@ -44,6 +46,8 @@ interface ReceiptData {
   ebarimtQrData?: string | null;
   ebarimtRegistered?: boolean;
   ebarimtDate?: Date | null;
+  // B2B flag - organizations don't get lottery numbers
+  isB2B?: boolean;
 }
 
 class PDFService {
@@ -373,7 +377,7 @@ class PDFService {
   private addA5VATInfo(doc: jsPDF, data: ReceiptData, yPos: number): number {
     doc.setFontSize(9);
     doc.setFont("Roboto", "bold");
-    doc.text("6. НӨАТ мэдээлэл", 10, yPos);
+    doc.text("6. Татварын мэдээлэл", 10, yPos);
 
     yPos += 5;
     doc.setFontSize(8);
@@ -381,29 +385,42 @@ class PDFService {
     const xLabel = 12;
     const xValue = 100;
 
-    // Subtotal (НӨАТ-тэй дүн)
+    // Subtotal (НӨАТ-гүй дүн)
     doc.setFont("Roboto", "bold");
-    doc.text("НӨАТ-тэй дүн:", xLabel, yPos);
+    doc.text("Татваргүй дүн:", xLabel, yPos);
     doc.setFont("Roboto", "normal");
-    doc.text(this.formatCurrencyShort(data.total), xValue, yPos, {
+    doc.text(this.formatCurrencyShort(data.subtotal), xValue, yPos, {
       align: "right",
     });
 
     // VAT
     yPos += 4;
     doc.setFont("Roboto", "bold");
-    doc.text("НӨАТ:", xLabel, yPos);
+    doc.text("НӨАТ (10%):", xLabel, yPos);
     doc.setFont("Roboto", "normal");
     doc.text(this.formatCurrencyShort(data.vat), xValue, yPos, {
       align: "right",
     });
 
-    // City tax (НХАТ)
+    // City Tax (NHAT) - only for Ulaanbaatar
+    if (data.cityTax && data.cityTax > 0) {
+      yPos += 4;
+      doc.setFont("Roboto", "bold");
+      doc.text("НХАТ (2%):", xLabel, yPos);
+      doc.setFont("Roboto", "normal");
+      doc.text(this.formatCurrencyShort(data.cityTax), xValue, yPos, {
+        align: "right",
+      });
+    }
+
+    // Total with all taxes
     yPos += 4;
     doc.setFont("Roboto", "bold");
-    doc.text("НХАТ:", xLabel, yPos);
+    doc.text("Нийт дүн:", xLabel, yPos);
     doc.setFont("Roboto", "normal");
-    doc.text("0.00", xValue, yPos, { align: "right" });
+    doc.text(this.formatCurrencyShort(data.total), xValue, yPos, {
+      align: "right",
+    });
 
     // Divider
     yPos += 4;
@@ -419,9 +436,18 @@ class PDFService {
     qrCodeDataURL: string,
     yPos: number
   ): number {
+    // Detect B2B transaction (organization with TIN)
+    const isB2B = data.isB2B || !!data.customer.registrationNumber;
+    
     doc.setFontSize(9);
     doc.setFont("Roboto", "bold");
-    doc.text("7. QR код ба Сугалааны дугаар", 10, yPos);
+    
+    // Different title for B2B vs B2C
+    if (isB2B) {
+      doc.text("7. QR код ба Баримтын мэдээлэл", 10, yPos);
+    } else {
+      doc.text("7. QR код ба Сугалааны дугаар", 10, yPos);
+    }
 
     yPos += 5;
 
@@ -430,27 +456,53 @@ class PDFService {
     const qrX = 15;
     doc.addImage(qrCodeDataURL, "PNG", qrX, yPos, qrSize, qrSize);
 
-    // Lottery number (if available)
-    if (data.ebarimtLottery) {
-      doc.setFontSize(11);
+    // B2B receipt - show customer TIN, NO lottery
+    if (isB2B) {
+      doc.setFontSize(9);
       doc.setFont("Roboto", "bold");
-      doc.text("Сугалааны дугаар:", qrX + qrSize + 10, yPos + 8);
+      doc.text("Байгууллагын баримт", qrX + qrSize + 10, yPos + 8);
 
-      doc.setFontSize(16);
-      doc.setFont("Roboto", "bold");
-      doc.text(data.ebarimtLottery, qrX + qrSize + 10, yPos + 18);
-
-      doc.setFontSize(7);
-      doc.setFont("Roboto", "normal");
-      const lotteryText = doc.splitTextToSize(
-        "Та энэ дугаараа хадгалж, сарын эцэст сугалаанд оролцоно уу!",
-        60
-      );
-      doc.text(lotteryText, qrX + qrSize + 10, yPos + 24);
-    } else {
       doc.setFontSize(8);
       doc.setFont("Roboto", "normal");
-      doc.text("E-Barimt бүртгэлгүй", qrX + qrSize + 10, yPos + 15);
+      
+      // Customer TIN
+      if (data.customer.registrationNumber) {
+        doc.text(`Худалдан авагч ТТД: ${data.customer.registrationNumber}`, qrX + qrSize + 10, yPos + 14);
+      }
+      
+      // Customer name
+      const customerName = data.customer.name || "N/A";
+      const nameLines = doc.splitTextToSize(`Нэр: ${customerName}`, 55);
+      doc.text(nameLines, qrX + qrSize + 10, yPos + 20);
+      
+      // Note about no lottery for B2B
+      doc.setFontSize(6);
+      doc.setFont("Roboto", "normal");
+      doc.text("(ААН-д сугалаа олгогдохгүй)", qrX + qrSize + 10, yPos + 30);
+      
+    } else {
+      // B2C receipt - show lottery number
+      if (data.ebarimtLottery) {
+        doc.setFontSize(11);
+        doc.setFont("Roboto", "bold");
+        doc.text("Сугалаа:", qrX + qrSize + 10, yPos + 8);
+
+        doc.setFontSize(16);
+        doc.setFont("Roboto", "bold");
+        doc.text(data.ebarimtLottery, qrX + qrSize + 10, yPos + 18);
+
+        doc.setFontSize(7);
+        doc.setFont("Roboto", "normal");
+        const lotteryText = doc.splitTextToSize(
+          "Та энэ дугаараа хадгалж, сарын эцэст сугалаанд оролцоно уу!",
+          60
+        );
+        doc.text(lotteryText, qrX + qrSize + 10, yPos + 24);
+      } else if (!data.ebarimtRegistered) {
+        doc.setFontSize(8);
+        doc.setFont("Roboto", "normal");
+        doc.text("E-Barimt бүртгэлгүй", qrX + qrSize + 10, yPos + 15);
+      }
     }
 
     // E-Barimt verification info

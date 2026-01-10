@@ -74,6 +74,9 @@ model Product {
   netWeight         Decimal?                @map("net_weight") @db.Decimal(10, 3)
   grossWeight       Decimal?                @map("gross_weight") @db.Decimal(10, 3)
   isActive          Boolean                 @default(true) @map("is_active")
+  // E-Barimt fields
+  classificationCode String?                @map("classification_code") @db.VarChar(20) // 7-digit BUNA code
+  vatType           String?                 @default("VAT") @map("vat_type") @db.VarChar(20) // VAT, VAT_FREE, VAT_ZERO, NO_VAT
   inventoryBalances InventoryBalance[]
   forecasts         InventoryForecast[]
   orderItems        OrderItem[]

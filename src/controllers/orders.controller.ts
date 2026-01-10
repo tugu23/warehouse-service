@@ -899,6 +899,39 @@ export const getOrderReceiptPDF = async (
     }
 
     // Prepare data for PDF generation
+    // Calculate VAT and City Tax (NHAT) for Ulaanbaatar
+    const total = parseFloat(order.totalAmount?.toString() || "0");
+    const isUlaanbaatar = [
+      "01",
+      "02",
+      "03",
+      "04",
+      "05",
+      "06",
+      "07",
+      "08",
+      "09",
+    ].includes(order.customer.district || "06");
+
+    // Calculate with proper tax breakdown
+    let subtotal: number;
+    let vat: number;
+    let cityTax = 0;
+
+    if (isUlaanbaatar) {
+      // Total = subtotal * (1 + 0.10 + 0.02) = subtotal * 1.12
+      subtotal = total / 1.12;
+      vat = subtotal * 0.1;
+      cityTax = subtotal * 0.02;
+    } else {
+      // Total = subtotal * 1.1
+      subtotal = total / 1.1;
+      vat = total - subtotal;
+    }
+
+    // Detect B2B (organization with TIN)
+    const isB2B = !!order.customer.registrationNumber;
+
     const receiptData = {
       orderId: order.id,
       orderNumber:
@@ -910,6 +943,7 @@ export const getOrderReceiptPDF = async (
         name: order.customer.name,
         address: order.customer.address,
         phoneNumber: order.customer.phoneNumber,
+        registrationNumber: order.customer.registrationNumber, // ТТД for B2B
       },
       agent: {
         name: order.agent.name,
@@ -923,11 +957,10 @@ export const getOrderReceiptPDF = async (
         unitPrice: parseFloat(item.unitPrice.toString()),
         total: parseFloat(item.unitPrice.toString()) * item.quantity,
       })),
-      subtotal: parseFloat(
-        order.subtotalAmount?.toString() || order.totalAmount?.toString() || "0"
-      ),
-      vat: parseFloat(order.vatAmount?.toString() || "0"),
-      total: parseFloat(order.totalAmount?.toString() || "0"),
+      subtotal: Math.round(subtotal * 100) / 100,
+      vat: Math.round(vat * 100) / 100,
+      total,
+      cityTax: Math.round(cityTax * 100) / 100, // НХАТ
       paymentMethod: order.paymentMethod,
       paymentStatus: order.paymentStatus,
       paidAmount: parseFloat(order.paidAmount?.toString() || "0"),
@@ -937,10 +970,11 @@ export const getOrderReceiptPDF = async (
       // E-Barimt fields
       ebarimtId: order.ebarimtId,
       ebarimtBillId: order.ebarimtBillId,
-      ebarimtLottery: order.ebarimtLottery,
+      ebarimtLottery: isB2B ? undefined : order.ebarimtLottery, // No lottery for B2B
       ebarimtQrData: order.ebarimtQrData,
       ebarimtRegistered: order.ebarimtRegistered,
       ebarimtDate: order.ebarimtDate,
+      isB2B, // Flag for PDF service
     };
 
     // Generate PDF
