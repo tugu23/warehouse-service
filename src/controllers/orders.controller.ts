@@ -843,6 +843,7 @@ export const getOrderReceiptPDF = async (
     const authReq = req as AuthRequest;
     const { id } = req.params;
     const download = req.query.download === "true";
+    const showVat = req.query.showVat === "true"; // If true, show VAT; if false/undefined, show НӨАТ-гүй падаан
 
     const order = await prisma.order.findUnique({
       where: { id: parseInt(id) },
@@ -975,6 +976,7 @@ export const getOrderReceiptPDF = async (
       ebarimtRegistered: order.ebarimtRegistered,
       ebarimtDate: order.ebarimtDate,
       isB2B, // Flag for PDF service
+      showVat: showVat, // true = НӨАТ-тай, false = НӨАТ-гүй падаан
     };
 
     // Generate PDF

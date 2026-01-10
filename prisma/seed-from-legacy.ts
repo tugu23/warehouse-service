@@ -318,38 +318,53 @@ async function main() {
     });
   }
 
-  await batchProcess(
-    products,
-    100,
-    async (batch) => {
-      for (const productData of batch) {
-        try {
-          // Try to find existing product by ID or barcode or name
-          let product = await prisma.product.findFirst({
-            where: {
-              OR: [
-                { id: productData.id },
-                { barcode: productData.barcode || undefined },
-                { nameMongolian: productData.nameMongolian },
-              ],
-            },
-          });
-          if (!product) {
-            product = await prisma.product.create({ data: productData });
-          }
-          idMapper.set("baraa", productData.id, product.id);
-        } catch (error) {
-          console.error(
-            `  ⚠️  Error creating product ${productData.id}:`,
-            error
-          );
-        }
+  // Insert products with legacy IDs using raw SQL
+  console.log("  Inserting products with legacy IDs...");
+  let productsCreated = 0;
+  
+  for (const productData of products) {
+    try {
+      // Use $executeRawUnsafe to insert with specific ID
+      const result = await prisma.$executeRawUnsafe(`
+        INSERT INTO products (id, name_mongolian, name_english, name_korean, product_code, barcode, 
+          supplier_id, category_id, stock_quantity, units_per_box, price_wholesale, price_retail, 
+          price_per_box, net_weight, gross_weight, is_active)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, true)
+        ON CONFLICT (id) DO NOTHING
+      `,
+        productData.id,
+        productData.nameMongolian,
+        productData.nameEnglish || null,
+        productData.nameKorean || null,
+        productData.productCode || null,
+        productData.barcode || null,
+        productData.supplierId || null,
+        productData.categoryId || null,
+        productData.stockQuantity || 0,
+        productData.unitsPerBox || null,
+        productData.priceWholesale || null,
+        productData.priceRetail || null,
+        productData.pricePerBox || null,
+        productData.netWeight || null,
+        productData.grossWeight || null
+      );
+      
+      idMapper.set("baraa", productData.id, productData.id);
+      productsCreated++;
+      
+      if (productsCreated % 100 === 0) {
+        console.log(`  ✓ Processed ${productsCreated}/${products.length} products`);
       }
-    },
-    "products"
-  );
+    } catch (error: any) {
+      console.error(`  ⚠️  Error creating product ${productData.id}:`, error.message);
+    }
+  }
 
-  console.log(`  ✓ Products created: ${products.length}`);
+  // Reset the sequence to be above the max ID
+  const maxProductId = Math.max(...products.map(p => p.id));
+  await prisma.$executeRawUnsafe(`SELECT setval('products_id_seq', $1, false)`, maxProductId + 1);
+  
+  console.log(`  ✓ Products created: ${productsCreated} (IDs preserved: 422-${maxProductId})`);
 
   // ============================================================================
   // PHASE 4: Sales Agents (Employees)
