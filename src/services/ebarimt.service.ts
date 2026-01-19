@@ -6,45 +6,63 @@ import logger from "../utils/logger";
 interface EBarimtConfig {
   apiUrl: string;
   posNo: string;
-  regNo: string;
+  merchantTin: string; // ТТД (Татвар төлөгчийн дугаар)
   apiKey?: string;
   districtCode: string;
-  branchNo?: string;
+  branchNo: string;
   macAddress?: string;
 }
 
+// Item interface matching official API
 interface EBarimtItem {
   name: string;
   barCode?: string;
   barCodeType?: string; // GS1, ISBN, UNDEFINED
   classificationCode?: string; // 7-digit BUNA code
+  taxProductCode?: string | null;
+  measureUnit?: string;
   qty: number;
   unitPrice: number;
   totalAmount: number;
-  cityTax: number;
-  vat: number;
-  vatType?: "VAT" | "VAT_FREE" | "VAT_ZERO" | "NO_VAT";
+  totalVAT: number;
+  totalCityTax: number;
 }
 
-interface EBarimtRequest {
-  posNo: string;
-  regNo: string;
-  orgName: string;
-  orgCity?: string;
-  orgDistrict?: string;
-  customerNo?: string;
-  customerName?: string;
-  customerTin?: string;
+// Receipt sub-object in request
+interface EBarimtReceiptItem {
   totalAmount: number;
-  totalVat: number;
+  taxType: "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NO_VAT";
+  merchantTin: string;
+  customerTin?: string | null;
+  totalVAT: number;
   totalCityTax: number;
-  districtCode?: string;
-  branchNo?: string;
-  paymentType: string; // CASH, CARD, etc.
-  billType: string; // 1=Retail, 3=Organization
-  stocks: EBarimtItem[];
-  returnBillId?: string; // For return/correction
-  invoiceId?: string; // For invoice reference
+  invoiceId?: string | null;
+  bankAccountNo?: string;
+  iBan?: string;
+  items: EBarimtItem[];
+}
+
+// Official API request format from https://developer.itc.gov.mn
+interface EBarimtRequest {
+  branchNo: string;
+  totalAmount: number;
+  totalVAT: number;
+  totalCityTax: number;
+  districtCode: string;
+  merchantTin: string;
+  posNo: string;
+  customerTin?: string | null;
+  consumerNo?: string; // Order number
+  type: "B2C_RECEIPT" | "B2B_RECEIPT";
+  inactiveId?: string | null; // For return receipts
+  reportMonth?: string | null; // YYYYMM format for supplement
+  billIdSuffix?: string;
+  receipts: EBarimtReceiptItem[];
+  payments: Array<{
+    code: "CASH" | "CARD" | "BANK" | "MOBILE" | "CREDIT";
+    status: "PAID" | "UNPAID";
+    paidAmount: number;
+  }>;
 }
 
 interface EBarimtResponse {
@@ -125,10 +143,11 @@ class EBarimtService {
 
   constructor() {
     // Configuration from environment variables
+    // Official eBarimt API runs on localhost:7080
     this.config = {
-      apiUrl: process.env.EBARIMT_API_URL || "http://localhost:8080/api",
-      posNo: process.env.EBARIMT_POS_NO || "",
-      regNo: process.env.EBARIMT_REG_NO || "",
+      apiUrl: process.env.EBARIMT_API_URL || "http://localhost:7080",
+      posNo: process.env.EBARIMT_POS_NO || "001",
+      merchantTin: process.env.EBARIMT_MERCHANT_TIN || process.env.EBARIMT_REG_NO || "",
       apiKey: process.env.EBARIMT_API_KEY,
       districtCode: process.env.EBARIMT_DISTRICT_CODE || "06", // Default: Сүхбаатар
       branchNo: process.env.EBARIMT_BRANCH_NO || "001",
@@ -139,14 +158,16 @@ class EBarimtService {
     this.isEnabled =
       process.env.EBARIMT_ENABLED === "true" &&
       !!this.config.posNo &&
-      !!this.config.regNo;
+      !!this.config.merchantTin;
 
     // Create axios instance for POS API
+    // Official API requires Accept: application/soap+xml header
     this.client = axios.create({
       baseURL: this.config.apiUrl,
       timeout: 30000,
       headers: {
         "Content-Type": "application/json",
+        "Accept": "application/soap+xml",
         ...(this.config.apiKey && {
           Authorization: `Bearer ${this.config.apiKey}`,
         }),
@@ -155,7 +176,7 @@ class EBarimtService {
 
     if (!this.isEnabled) {
       logger.warn(
-        "E-Barimt service is disabled. Set EBARIMT_ENABLED=true and configure POS_NO and REG_NO to enable."
+        "E-Barimt service is disabled. Set EBARIMT_ENABLED=true and configure POS_NO and MERCHANT_TIN to enable."
       );
     } else {
       logger.info("E-Barimt service initialized successfully", {
@@ -419,7 +440,7 @@ class EBarimtService {
 
   /**
    * Register a receipt with E-Barimt system
-   * Enhanced with NHAT (City Tax) and Classification Code support
+   * Uses official API format from https://developer.itc.gov.mn
    */
   async registerReceipt(orderData: {
     orderNumber: string;
@@ -435,6 +456,7 @@ class EBarimtService {
       unitPrice: number;
       total: number;
       vatType?: "VAT" | "VAT_FREE" | "VAT_ZERO" | "NO_VAT";
+      measureUnit?: string;
     }>;
     subtotal: number;
     vat: number;
@@ -453,11 +475,13 @@ class EBarimtService {
     }
 
     try {
-      // Map payment method to E-Barimt payment type
-      const paymentType = this.mapPaymentMethod(orderData.paymentMethod);
+      // Map payment method to E-Barimt payment code
+      const paymentCode = this.mapPaymentMethod(orderData.paymentMethod);
 
-      // Determine bill type (1=Retail, 3=Organization)
-      const billType = orderData.customer.registrationNumber ? "3" : "1";
+      // Determine receipt type (B2C or B2B)
+      const receiptType = orderData.customer.registrationNumber 
+        ? "B2B_RECEIPT" 
+        : "B2C_RECEIPT";
 
       // Get district code (for NHAT calculation)
       const districtCode = orderData.districtCode || this.config.districtCode;
@@ -465,24 +489,27 @@ class EBarimtService {
       // Check if this district requires NHAT (Ulaanbaatar only)
       const requiresNHAT = this.isUlaanbaatarDistrict(districtCode);
 
-      // Calculate totals with proper NHAT
+      // Calculate totals and prepare items
+      let totalVAT = 0;
       let totalCityTax = 0;
-      const stocks: EBarimtItem[] = orderData.items.map((item) => {
+
+      const items: EBarimtItem[] = orderData.items.map((item) => {
         const vatType = item.vatType || "VAT";
         let itemVat = 0;
         let itemCityTax = 0;
 
-        // Calculate VAT based on type
+        // Calculate VAT based on type (VAT is included in total)
         if (vatType === "VAT") {
-          itemVat = item.total * VAT_RATE;
-        } else if (vatType === "VAT_ZERO") {
-          itemVat = 0; // 0% VAT
+          // VAT = total * 10 / 110 (extracting VAT from inclusive price)
+          itemVat = Math.round((item.total * VAT_RATE / (1 + VAT_RATE)) * 100) / 100;
+          totalVAT += itemVat;
         }
-        // VAT_FREE and NO_VAT don't have VAT
 
         // Calculate NHAT (City Tax) for Ulaanbaatar
         if (requiresNHAT && vatType === "VAT") {
-          itemCityTax = item.total * CITY_TAX_RATE;
+          // City Tax = (total - VAT) * 2%
+          const baseAmount = item.total - itemVat;
+          itemCityTax = Math.round(baseAmount * CITY_TAX_RATE * 100) / 100;
           totalCityTax += itemCityTax;
         }
 
@@ -493,44 +520,74 @@ class EBarimtService {
             ? this.detectBarcodeType(item.barcode)
             : undefined,
           classificationCode: item.classificationCode || undefined,
+          taxProductCode: null,
+          measureUnit: item.measureUnit || "ширхэг",
           qty: item.quantity,
           unitPrice: item.unitPrice,
           totalAmount: item.total,
-          cityTax: Math.round(itemCityTax * 100) / 100,
-          vat: Math.round(itemVat * 100) / 100,
-          vatType,
+          totalVAT: itemVat,
+          totalCityTax: itemCityTax,
         };
       });
 
-      // Prepare request data
+      // Determine tax type for receipt
+      const taxType = orderData.items.some(i => i.vatType === "VAT_FREE") 
+        ? "VAT_FREE" as const
+        : orderData.items.some(i => i.vatType === "VAT_ZERO")
+          ? "VAT_ZERO" as const
+          : orderData.items.some(i => i.vatType === "NO_VAT")
+            ? "NO_VAT" as const
+            : "VAT_ABLE" as const;
+
+      // Prepare request data using official API format
       const requestData: EBarimtRequest = {
-        posNo: this.config.posNo,
-        regNo: this.config.regNo,
-        orgName: "GLF LLC OASIS Бөөний төв",
-        customerNo: orderData.orderNumber,
-        customerName: orderData.customer.name,
-        customerTin: orderData.customer.registrationNumber || undefined,
+        branchNo: this.config.branchNo,
         totalAmount: orderData.total,
-        totalVat: orderData.vat,
+        totalVAT: Math.round(totalVAT * 100) / 100,
         totalCityTax: Math.round(totalCityTax * 100) / 100,
         districtCode,
-        branchNo: this.config.branchNo,
-        paymentType,
-        billType,
-        stocks,
+        merchantTin: this.config.merchantTin,
+        posNo: this.config.posNo,
+        customerTin: orderData.customer.registrationNumber || null,
+        consumerNo: orderData.orderNumber,
+        type: receiptType,
+        inactiveId: null,
+        reportMonth: null,
+        billIdSuffix: "01",
+        receipts: [
+          {
+            totalAmount: orderData.total,
+            taxType,
+            merchantTin: this.config.merchantTin,
+            customerTin: orderData.customer.registrationNumber || null,
+            totalVAT: Math.round(totalVAT * 100) / 100,
+            totalCityTax: Math.round(totalCityTax * 100) / 100,
+            invoiceId: null,
+            bankAccountNo: "",
+            iBan: "",
+            items,
+          },
+        ],
+        payments: [
+          {
+            code: paymentCode as "CASH" | "CARD" | "BANK" | "MOBILE" | "CREDIT",
+            status: "PAID",
+            paidAmount: orderData.total,
+          },
+        ],
       };
 
       logger.info("Registering receipt with E-Barimt", {
         orderNumber: orderData.orderNumber,
         total: orderData.total,
-        billType,
+        type: receiptType,
         districtCode,
         hasCityTax: totalCityTax > 0,
       });
 
-      // Send request to E-Barimt API
+      // Send request to E-Barimt API (official endpoint: /rest/receipt)
       const response = await this.client.post<EBarimtResponse>(
-        "/put",
+        "/rest/receipt",
         requestData
       );
 
@@ -610,7 +667,7 @@ class EBarimtService {
     try {
       const requestData = {
         posNo: this.config.posNo,
-        regNo: this.config.regNo,
+        merchantTin: this.config.merchantTin,
         billId,
         returnReason: reason || "Буцаалт",
       };
@@ -1180,7 +1237,7 @@ class EBarimtService {
     try {
       const response = await this.client.post("/registerDevice", {
         posNo: this.config.posNo,
-        regNo: this.config.regNo,
+        merchantTin: this.config.merchantTin,
         macAddress: deviceInfo.macAddress,
         latitude: deviceInfo.latitude,
         longitude: deviceInfo.longitude,
