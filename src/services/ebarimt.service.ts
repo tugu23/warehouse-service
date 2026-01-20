@@ -89,6 +89,7 @@ interface PosApiInformation {
   operatorTIN?: string;
   posId?: number;
   posNo?: string;
+  version?: string; // PosAPI version (e.g., "3.2.35")
   lastSentDate?: string; // Last sent date to central system
   leftLotteries?: number; // Remaining lottery numbers (сугалааны үлдсэн тоо)
   appInfo?: {
@@ -96,17 +97,26 @@ interface PosApiInformation {
     currentDir?: string;
     database?: string;
     "database-host"?: string;
+    "supported-databases"?: string[];
     workDir?: string;
   };
+  paymentTypes?: Array<{
+    code: string; // "CASH", "PAYMENT_CARD", "EMD", "BANK_TRANSFER", etc.
+    name: string; // Mongolian name
+  }>;
   merchants?: Array<{
     name?: string;
     tin?: string;
+    vatPayer?: boolean; // Changed from string to boolean
     customers?: Array<{
       name?: string;
       tin?: string;
-      vatPayer?: string;
+      vatPayer?: boolean; // Changed from string to boolean
     }>;
   }>;
+  condition?: {
+    isMedicine?: boolean;
+  };
   // Additional fields for internal use
   billCount?: number;
   billAmount?: number;
@@ -229,12 +239,26 @@ class EBarimtService {
     operatorTIN?: string;
     posId?: number;
     posNo?: string;
+    version?: string;
     lastSentDate?: string;
     leftLotteries?: number;
+    paymentTypes?: Array<{
+      code: string;
+      name: string;
+    }>;
     merchants?: Array<{
       name?: string;
       tin?: string;
+      vatPayer?: boolean;
+      customers?: Array<{
+        name?: string;
+        tin?: string;
+        vatPayer?: boolean;
+      }>;
     }>;
+    condition?: {
+      isMedicine?: boolean;
+    };
     warningMessage?: string;
     shouldSendNow?: boolean;
     message?: string;
@@ -281,6 +305,7 @@ class EBarimtService {
       logger.info("POS API information retrieved", {
         operatorName: data.operatorName,
         posNo: data.posNo,
+        version: data.version,
         leftLotteries: data.leftLotteries,
         lastSentDate: data.lastSentDate,
         shouldSendNow,
@@ -292,9 +317,12 @@ class EBarimtService {
         operatorTIN: data.operatorTIN,
         posId: data.posId,
         posNo: data.posNo,
+        version: data.version,
         lastSentDate: data.lastSentDate,
         leftLotteries: data.leftLotteries,
-        merchants: data.merchants?.map(m => ({ name: m.name, tin: m.tin })),
+        paymentTypes: data.paymentTypes,
+        merchants: data.merchants,
+        condition: data.condition,
         warningMessage: warningMessage.trim() || undefined,
         shouldSendNow: shouldSendNow || lotteryWarning,
         message: "Information retrieved successfully",

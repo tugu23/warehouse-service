@@ -467,88 +467,88 @@ class PDFKitService {
 
     if (showVat) {
       // WITH VAT: Show QR code and lottery section
-      const col1X = this.MARGIN;
-      const col1Width = contentWidth / 2 - 10;
+    const col1X = this.MARGIN;
+    const col1Width = contentWidth / 2 - 10;
 
-      doc.fontSize(7).font("Roboto-Bold");
-      doc.text("QR код ба Сугалаа", col1X, yPos, { width: col1Width });
-      let y1 = yPos + 10;
+    doc.fontSize(7).font("Roboto-Bold");
+    doc.text("QR код ба Сугалаа", col1X, yPos, { width: col1Width });
+    let y1 = yPos + 10;
 
-      // Convert QR data URL to buffer
-      const qrBuffer = Buffer.from(qrCodeDataURL.split(",")[1], "base64");
+    // Convert QR data URL to buffer
+    const qrBuffer = Buffer.from(qrCodeDataURL.split(",")[1], "base64");
 
-      // Add QR code
-      const qrSize = 60;
-      doc.image(qrBuffer, col1X, y1, { width: qrSize, height: qrSize });
+    // Add QR code
+    const qrSize = 60;
+    doc.image(qrBuffer, col1X, y1, { width: qrSize, height: qrSize });
 
-      // Lottery number (if available)
-      if (data.ebarimtLottery) {
-        const lotteryX = col1X + qrSize + 10;
+    // Lottery number (if available)
+    if (data.ebarimtLottery) {
+      const lotteryX = col1X + qrSize + 10;
 
-        doc.fontSize(7).font("Roboto-Bold").text("Сугалаа:", lotteryX, y1);
+      doc.fontSize(7).font("Roboto-Bold").text("Сугалаа:", lotteryX, y1);
 
-        doc
-          .fontSize(11)
-          .font("Roboto-Bold")
-          .text(data.ebarimtLottery, lotteryX, y1 + 12);
+      doc
+        .fontSize(11)
+        .font("Roboto-Bold")
+        .text(data.ebarimtLottery, lotteryX, y1 + 12);
 
-        doc
-          .fontSize(5.5)
-          .font("Roboto")
-          .text(
-            "Та энэ дугаараа хадгалж,\nсарын эцэст сугалаанд\nоролцоно уу!",
-            lotteryX,
-            y1 + 28,
-            { width: 100 }
-          );
-      } else {
-        const lotteryX = col1X + qrSize + 10;
-        doc
-          .fontSize(6.5)
-          .font("Roboto")
-          .text("E-Barimt\nбүртгэлгүй", lotteryX, y1 + 20);
-      }
-
-      // QR verification text
       doc
         .fontSize(5.5)
         .font("Roboto")
-        .text("QR код уншуулж\nбаримт шалгана уу", col1X, y1 + qrSize + 3, {
-          width: qrSize,
-          align: "center",
-        });
+        .text(
+          "Та энэ дугаараа хадгалж,\nсарын эцэст сугалаанд\nоролцоно уу!",
+          lotteryX,
+          y1 + 28,
+          { width: 100 }
+        );
+    } else {
+      const lotteryX = col1X + qrSize + 10;
+      doc
+        .fontSize(6.5)
+        .font("Roboto")
+        .text("E-Barimt\nбүртгэлгүй", lotteryX, y1 + 20);
+    }
+
+    // QR verification text
+    doc
+      .fontSize(5.5)
+      .font("Roboto")
+      .text("QR код уншуулж\nбаримт шалгана уу", col1X, y1 + qrSize + 3, {
+        width: qrSize,
+        align: "center",
+      });
 
       // Right column: Price summary with VAT
-      const col2X = this.MARGIN + contentWidth / 2 + 10;
+    const col2X = this.MARGIN + contentWidth / 2 + 10;
 
-      let y2 = yPos;
-      doc.fontSize(6.5);
+    let y2 = yPos;
+    doc.fontSize(6.5);
 
-      const vat10Percent = data.subtotal * 0.1;
-      const totalWithVat = data.subtotal + vat10Percent;
+    const vat10Percent = data.subtotal * 0.1;
+    const totalWithVat = data.subtotal + vat10Percent;
 
-      // Subtotal (Барааны нийт дүн)
-      doc.font("Roboto-Bold").text("Барааны нийт дүн:", col2X, y2);
-      doc
-        .font("Roboto")
-        .text(this.formatCurrencyShort(data.subtotal), col2X + 90, y2);
-      y2 += 10;
+    // Subtotal (Барааны нийт дүн)
+    doc.font("Roboto-Bold").text("Барааны нийт дүн:", col2X, y2);
+    doc
+      .font("Roboto")
+      .text(this.formatCurrencyShort(data.subtotal), col2X + 90, y2);
+    y2 += 10;
 
-      // VAT 10%
-      doc.font("Roboto-Bold").text("НӨАТ (10%):", col2X, y2);
-      doc
-        .font("Roboto")
-        .text(this.formatCurrencyShort(vat10Percent), col2X + 90, y2);
-      y2 += 10;
+    // VAT 10%
+    doc.font("Roboto-Bold").text("НӨАТ (10%):", col2X, y2);
+    doc
+      .font("Roboto")
+      .text(this.formatCurrencyShort(vat10Percent), col2X + 90, y2);
+    y2 += 10;
 
-      // Total (Нийт үнэ = Subtotal + VAT 10%)
-      doc.font("Roboto-Bold").text("Нийт үнэ:", col2X, y2);
-      doc
-        .font("Roboto")
-        .text(this.formatCurrencyShort(totalWithVat), col2X + 90, y2);
+    // Total (Нийт үнэ = Subtotal + VAT 10%)
+    doc.font("Roboto-Bold").text("Нийт үнэ:", col2X, y2);
+    doc
+      .font("Roboto")
+      .text(this.formatCurrencyShort(totalWithVat), col2X + 90, y2);
 
-      const maxY = Math.max(y1 + qrSize + 15, y2);
-      yPos = maxY + 15;
+    const maxY = Math.max(y1 + qrSize + 15, y2);
+    yPos = maxY + 15;
     } else {
       // WITHOUT VAT: Simple total display without QR code/lottery
       doc.fontSize(8).font("Roboto-Bold");

@@ -446,7 +446,7 @@ class PDFService {
     if (isB2B) {
       doc.text("7. QR код ба Баримтын мэдээлэл", 10, yPos);
     } else {
-      doc.text("7. QR код ба Сугалааны дугаар", 10, yPos);
+    doc.text("7. QR код ба Сугалааны дугаар", 10, yPos);
     }
 
     yPos += 5;
@@ -482,26 +482,26 @@ class PDFService {
       
     } else {
       // B2C receipt - show lottery number
-      if (data.ebarimtLottery) {
-        doc.setFontSize(11);
-        doc.setFont("Roboto", "bold");
+    if (data.ebarimtLottery) {
+      doc.setFontSize(11);
+      doc.setFont("Roboto", "bold");
         doc.text("Сугалаа:", qrX + qrSize + 10, yPos + 8);
 
-        doc.setFontSize(16);
-        doc.setFont("Roboto", "bold");
-        doc.text(data.ebarimtLottery, qrX + qrSize + 10, yPos + 18);
+      doc.setFontSize(16);
+      doc.setFont("Roboto", "bold");
+      doc.text(data.ebarimtLottery, qrX + qrSize + 10, yPos + 18);
 
-        doc.setFontSize(7);
-        doc.setFont("Roboto", "normal");
-        const lotteryText = doc.splitTextToSize(
-          "Та энэ дугаараа хадгалж, сарын эцэст сугалаанд оролцоно уу!",
-          60
-        );
-        doc.text(lotteryText, qrX + qrSize + 10, yPos + 24);
+      doc.setFontSize(7);
+      doc.setFont("Roboto", "normal");
+      const lotteryText = doc.splitTextToSize(
+        "Та энэ дугаараа хадгалж, сарын эцэст сугалаанд оролцоно уу!",
+        60
+      );
+      doc.text(lotteryText, qrX + qrSize + 10, yPos + 24);
       } else if (!data.ebarimtRegistered) {
-        doc.setFontSize(8);
-        doc.setFont("Roboto", "normal");
-        doc.text("E-Barimt бүртгэлгүй", qrX + qrSize + 10, yPos + 15);
+      doc.setFontSize(8);
+      doc.setFont("Roboto", "normal");
+      doc.text("E-Barimt бүртгэлгүй", qrX + qrSize + 10, yPos + 15);
       }
     }
 
