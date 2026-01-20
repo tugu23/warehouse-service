@@ -280,3 +280,69 @@ export const updateCustomer = async (
     next(error);
   }
 };
+
+/**
+ * Remove duplicate customers (Admin only)
+ * Keeps the customer with lowest ID for each duplicate name
+ */
+export const removeDuplicateCustomers = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    // Find all duplicate customer names
+    const duplicates = await prisma.$queryRaw<Array<{ name: string; count: bigint }>>`
+      SELECT name, COUNT(*) as count
+      FROM customers
+      GROUP BY name
+      HAVING COUNT(*) > 1
+    `;
+
+    if (duplicates.length === 0) {
+      res.json({
+        status: "success",
+        message: "No duplicate customers found",
+        data: { removed: 0, duplicates: [] },
+      });
+      return;
+    }
+
+    let totalRemoved = 0;
+    const duplicateNames: string[] = [];
+
+    // For each duplicate name, keep only the first (lowest ID)
+    for (const dup of duplicates) {
+      duplicateNames.push(dup.name);
+      
+      // Get all customers with this name
+      const customers = await prisma.customer.findMany({
+        where: { name: dup.name },
+        orderBy: { id: 'asc' },
+      });
+
+      // Delete all except the first one
+      if (customers.length > 1) {
+        const idsToDelete = customers.slice(1).map(c => c.id);
+        const deleted = await prisma.customer.deleteMany({
+          where: { id: { in: idsToDelete } },
+        });
+        totalRemoved += deleted.count;
+        logger.info(`Removed ${deleted.count} duplicate(s) for customer: ${dup.name}`);
+      }
+    }
+
+    logger.info(`Total duplicate customers removed: ${totalRemoved}`);
+
+    res.json({
+      status: "success",
+      message: `Removed ${totalRemoved} duplicate customers`,
+      data: {
+        removed: totalRemoved,
+        duplicates: duplicateNames,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};

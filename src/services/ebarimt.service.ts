@@ -9,7 +9,7 @@ interface EBarimtConfig {
   merchantTin: string; // ТТД (Татвар төлөгчийн дугаар)
   apiKey?: string;
   districtCode: string;
-  branchNo: string;
+  branchNo: string; // Branch number: 3-digit string like "001"
   macAddress?: string;
 }
 
@@ -44,7 +44,7 @@ interface EBarimtReceiptItem {
 
 // Official API request format from https://developer.itc.gov.mn
 interface EBarimtRequest {
-  branchNo: string;
+  branchNo: string; // MUST be 3-digit string like "001" (0-999 padded)
   totalAmount: number;
   totalVAT: number;
   totalCityTax: number;
@@ -52,7 +52,7 @@ interface EBarimtRequest {
   merchantTin: string;
   posNo: string;
   customerTin?: string | null;
-  consumerNo?: string; // Order number
+  consumerNo?: string; // Order number (only for B2C, 8-digit like "00000003")
   type: "B2C_RECEIPT" | "B2B_RECEIPT";
   inactiveId?: string | null; // For return receipts
   reportMonth?: string | null; // YYYYMM format for supplement
@@ -174,7 +174,7 @@ class EBarimtService {
       merchantTin: process.env.EBARIMT_MERCHANT_TIN || process.env.EBARIMT_REG_NO || "37900846788",
       apiKey: process.env.EBARIMT_API_KEY,
       districtCode: process.env.EBARIMT_DISTRICT_CODE || "06", // Default: Сүхбаатар
-      branchNo: process.env.EBARIMT_BRANCH_NO || "3900846788",
+      branchNo: (process.env.EBARIMT_BRANCH_NO || "1").toString().padStart(3, "0"), // 3-digit string like "001"
       macAddress: process.env.EBARIMT_MAC_ADDRESS,
     };
 
@@ -587,27 +587,47 @@ class EBarimtService {
             ? "NO_VAT" as const
             : "VAT_ABLE" as const;
 
+      // Validate and prepare customerTin (must be 11-14 digits for B2B)
+      let customerTin: string | null = null;
+      if (orderData.customer.registrationNumber) {
+        const tin = orderData.customer.registrationNumber.replace(/\D/g, ""); // Remove non-digits
+        if (tin.length >= 11 && tin.length <= 14) {
+          customerTin = tin;
+        } else {
+          logger.warn("Invalid customerTin length, treating as B2C", {
+            originalTin: orderData.customer.registrationNumber,
+            cleanedTin: tin,
+            length: tin.length,
+          });
+        }
+      }
+
+      // Generate 8-digit consumerNo for B2C from orderNumber (e.g., "ORD-000003" -> "00000003")
+      let consumerNo: string | undefined;
+      if (receiptType === "B2C_RECEIPT") {
+        // Extract numbers from orderNumber and pad to 8 digits
+        const numbers = orderData.orderNumber.replace(/\D/g, "");
+        consumerNo = numbers.padStart(8, "0");
+      }
+
       // Prepare request data using official API format
       const requestData: EBarimtRequest = {
-        branchNo: this.config.branchNo,
+        branchNo: this.config.branchNo, // MUST be string (not number!)
         totalAmount: orderData.total,
         totalVAT: Math.round(totalVAT * 100) / 100,
         totalCityTax: Math.round(totalCityTax * 100) / 100,
         districtCode,
         merchantTin: this.config.merchantTin,
         posNo: this.config.posNo,
-        customerTin: orderData.customer.registrationNumber || null,
-        consumerNo: orderData.orderNumber,
+        customerTin,
+        consumerNo,
         type: receiptType,
-        inactiveId: null,
-        reportMonth: null,
-        billIdSuffix: "01",
         receipts: [
           {
             totalAmount: orderData.total,
             taxType,
             merchantTin: this.config.merchantTin,
-            customerTin: orderData.customer.registrationNumber || null,
+            customerTin,
             totalVAT: Math.round(totalVAT * 100) / 100,
             totalCityTax: Math.round(totalCityTax * 100) / 100,
             invoiceId: null,
@@ -655,10 +675,26 @@ class EBarimtService {
 
       return response.data;
     } catch (error) {
-      logger.error("Error registering receipt with E-Barimt", {
-        error: error instanceof Error ? error.message : String(error),
-        orderNumber: orderData.orderNumber,
-      });
+      // Log detailed error information
+      if (axios.isAxiosError(error)) {
+        logger.error("Error registering receipt with E-Barimt", {
+          error: error.message,
+          orderNumber: orderData.orderNumber,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          responseData: error.response?.data,
+          requestData: {
+            orderNumber: orderData.orderNumber,
+            total: orderData.total,
+            itemCount: orderData.items.length,
+          },
+        });
+      } else {
+        logger.error("Error registering receipt with E-Barimt", {
+          error: error instanceof Error ? error.message : String(error),
+          orderNumber: orderData.orderNumber,
+        });
+      }
 
       return {
         success: false,

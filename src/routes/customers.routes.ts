@@ -5,6 +5,7 @@ import {
   getAllCustomers,
   getCustomerById,
   updateCustomer,
+  removeDuplicateCustomers,
 } from "../controllers/customers.controller";
 import { authMiddleware, checkRole } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validation.middleware";
@@ -278,6 +279,51 @@ router.put(
     body("direction").optional().isString(),
   ]),
   updateCustomer
+);
+
+/**
+ * @swagger
+ * /api/customers/remove-duplicates:
+ *   post:
+ *     summary: Remove duplicate customers
+ *     tags: [Customers]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Remove duplicate customers, keeping only the first occurrence (Admin only)
+ *     responses:
+ *       200:
+ *         description: Duplicates removed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: Removed 3 duplicate customers
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     removed:
+ *                       type: integer
+ *                       example: 3
+ *                     duplicates:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       example: ["Store A", "Store B"]
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ */
+router.post(
+  "/remove-duplicates",
+  checkRole(["Admin"]),
+  removeDuplicateCustomers
 );
 
 export default router;
