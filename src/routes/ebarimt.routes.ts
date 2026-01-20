@@ -247,16 +247,64 @@ router.get(
  *       200:
  *         description: Classification codes list
  */
+/**
+ * Get BUNA classification codes
+ * 
+ * Query parameters for hierarchical lookup:
+ * - p1: Салбар (Sector)
+ * - p2: Дэд салбар (Sub-sector)
+ * - p3: Бүлэг (Group)
+ * - p4: Анги (Class)
+ * - p5: Дэд анги (Sub-class)
+ * - p6: БҮНА код or Barcode
+ * 
+ * Call without params to get top-level sectors
+ */
 router.get(
   "/classification-codes",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const search = req.query.search as string | undefined;
-      const result = await ebarimtService.getClassificationCodes(search);
+      const { p1, p2, p3, p4, p5, p6 } = req.query;
+      
+      const result = await ebarimtService.getClassificationCodes({
+        p1: p1 as string | undefined,
+        p2: p2 as string | undefined,
+        p3: p3 as string | undefined,
+        p4: p4 as string | undefined,
+        p5: p5 as string | undefined,
+        p6: p6 as string | undefined,
+      });
 
       res.json({
         status: result.success ? "success" : "error",
         data: result.codes,
+        level: result.level,
+        message: result.message,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * Look up a barcode in the BUNA system
+ */
+router.get(
+  "/barcode/:barcode",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { barcode } = req.params;
+      const result = await ebarimtService.lookupBarcode(barcode);
+
+      res.json({
+        status: result.success ? "success" : "error",
+        data: {
+          found: result.found,
+          barcode: result.barcode,
+          classificationCode: result.classificationCode,
+          classificationName: result.classificationName,
+        },
         message: result.message,
       });
     } catch (error) {

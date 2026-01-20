@@ -81,21 +81,35 @@ interface EBarimtResponse {
   errorMessage?: string;
 }
 
-// PosAPI getInformation response interface
+// PosAPI 3.0 getInformation response interface
+// Official API: GET /rest/info
+// Reference: https://developer.itc.gov.mn/docs/ebarimt-api/xy84sum9avx4v-azhillagaany-medeelel-h-leen-avah
 interface PosApiInformation {
-  success: boolean;
-  registerNo?: string;
-  branchNo?: string;
+  operatorName?: string;
+  operatorTIN?: string;
+  posId?: number;
   posNo?: string;
-  dbDirPath?: string;
   lastSentDate?: string; // Last sent date to central system
-  lotteryCount?: number; // Remaining lottery numbers
-  billCount?: number; // Unsent bills count
-  billAmount?: number; // Unsent bills total amount
-  lottery?: {
-    warningCount?: number; // Warning threshold for lottery
-    warningMsg?: string; // Warning message
+  leftLotteries?: number; // Remaining lottery numbers (сугалааны үлдсэн тоо)
+  appInfo?: {
+    applicationDir?: string;
+    currentDir?: string;
+    database?: string;
+    "database-host"?: string;
+    workDir?: string;
   };
+  merchants?: Array<{
+    name?: string;
+    tin?: string;
+    customers?: Array<{
+      name?: string;
+      tin?: string;
+      vatPayer?: string;
+    }>;
+  }>;
+  // Additional fields for internal use
+  billCount?: number;
+  billAmount?: number;
   message?: string;
   errorCode?: string;
 }
@@ -150,7 +164,7 @@ class EBarimtService {
       merchantTin: process.env.EBARIMT_MERCHANT_TIN || process.env.EBARIMT_REG_NO || "",
       apiKey: process.env.EBARIMT_API_KEY,
       districtCode: process.env.EBARIMT_DISTRICT_CODE || "06", // Default: Сүхбаатар
-      branchNo: process.env.EBARIMT_BRANCH_NO || "001",
+      branchNo: process.env.EBARIMT_BRANCH_NO || "3900846788",
       macAddress: process.env.EBARIMT_MAC_ADDRESS,
     };
 
@@ -205,18 +219,24 @@ class EBarimtService {
   /**
    * getInformation - Ажиллагааны мэдээлэл хүлээн авах
    * Gets system information including lottery count, last sent date, and warnings
-   * Required by: https://developer.itc.gov.mn
+   * 
+   * Official API: GET /rest/info
+   * Reference: https://developer.itc.gov.mn/docs/ebarimt-api/xy84sum9avx4v-azhillagaany-medeelel-h-leen-avah
    */
   async getInformation(): Promise<{
     success: boolean;
+    operatorName?: string;
+    operatorTIN?: string;
+    posId?: number;
     posNo?: string;
-    branchNo?: string;
     lastSentDate?: string;
-    lotteryCount?: number;
-    billCount?: number;
-    billAmount?: number;
+    leftLotteries?: number;
+    merchants?: Array<{
+      name?: string;
+      tin?: string;
+    }>;
     warningMessage?: string;
-    shouldSendNow?: boolean; // True if 3-day limit approaching or lottery low
+    shouldSendNow?: boolean;
     message?: string;
     errorCode?: string;
   }> {
@@ -231,14 +251,20 @@ class EBarimtService {
     try {
       logger.info("Getting POS API information");
 
+      // Official API endpoint: GET /rest/info
       const response = await this.client.get<PosApiInformation>(
-        "/getInformation"
+        "/rest/info",
+        {
+          headers: {
+            Accept: "application/json",
+          },
+        }
       );
 
       const data = response.data;
 
       // Check if lottery count is running low (less than 100)
-      const lotteryWarning = (data.lotteryCount || 0) < 100;
+      const lotteryWarning = (data.leftLotteries || 0) < 100;
 
       // Check if bills need to be sent (3-day rule)
       const shouldSendNow = this.checkSendRequired(data.lastSentDate);
@@ -246,35 +272,29 @@ class EBarimtService {
       // Build warning message
       let warningMessage = "";
       if (lotteryWarning) {
-        warningMessage += `Сугалааны дугаар дуусаж байна! Үлдсэн: ${data.lotteryCount}. `;
-      }
-      if (data.lottery?.warningMsg) {
-        warningMessage += data.lottery.warningMsg + " ";
+        warningMessage += `Сугалааны дугаар дуусаж байна! Үлдсэн: ${data.leftLotteries}. `;
       }
       if (shouldSendNow) {
         warningMessage += `Баримтуудыг нэгдсэн системд илгээх шаардлагатай (3 хоногийн хугацаа). `;
       }
-      if ((data.billCount || 0) > 0) {
-        warningMessage += `Илгээгээгүй баримт: ${
-          data.billCount
-        } ширхэг, ${data.billAmount?.toLocaleString()}₮. `;
-      }
 
       logger.info("POS API information retrieved", {
-        lotteryCount: data.lotteryCount,
-        billCount: data.billCount,
+        operatorName: data.operatorName,
+        posNo: data.posNo,
+        leftLotteries: data.leftLotteries,
         lastSentDate: data.lastSentDate,
         shouldSendNow,
       });
 
       return {
         success: true,
+        operatorName: data.operatorName,
+        operatorTIN: data.operatorTIN,
+        posId: data.posId,
         posNo: data.posNo,
-        branchNo: data.branchNo,
         lastSentDate: data.lastSentDate,
-        lotteryCount: data.lotteryCount,
-        billCount: data.billCount,
-        billAmount: data.billAmount,
+        leftLotteries: data.leftLotteries,
+        merchants: data.merchants?.map(m => ({ name: m.name, tin: m.tin })),
         warningMessage: warningMessage.trim() || undefined,
         shouldSendNow: shouldSendNow || lotteryWarning,
         message: "Information retrieved successfully",
@@ -479,8 +499,8 @@ class EBarimtService {
       const paymentCode = this.mapPaymentMethod(orderData.paymentMethod);
 
       // Determine receipt type (B2C or B2B)
-      const receiptType = orderData.customer.registrationNumber 
-        ? "B2B_RECEIPT" 
+      const receiptType = orderData.customer.registrationNumber
+        ? "B2B_RECEIPT"
         : "B2C_RECEIPT";
 
       // Get district code (for NHAT calculation)
@@ -531,7 +551,7 @@ class EBarimtService {
       });
 
       // Determine tax type for receipt
-      const taxType = orderData.items.some(i => i.vatType === "VAT_FREE") 
+      const taxType = orderData.items.some(i => i.vatType === "VAT_FREE")
         ? "VAT_FREE" as const
         : orderData.items.some(i => i.vatType === "VAT_ZERO")
           ? "VAT_ZERO" as const
@@ -650,7 +670,15 @@ class EBarimtService {
   // ==================== BILL OPERATIONS ====================
 
   /**
-   * Return/delete a receipt - Баримт буцаах
+   * Return/delete a receipt - Баримт буцаах (идэвхгүй болгох)
+   * 
+   * Зөвхөн иргэн баталгаажуулаагүй баримтыг шууд идэвхгүй болгох боломжтой.
+   * Хэрэв баталгаажсан баримт буцаагдсан бол:
+   * - Баримт "Баталгаажаагүй буцаалт" төлөвтэй болно
+   * - Иргэн ИБАРИМТ аппликейшнээс зөвшөөрсний дараа идэвхгүй болно
+   * 
+   * Official API: DELETE /rest/receipt
+   * Reference: https://developer.itc.gov.mn/docs/ebarimt-api
    */
   async returnReceipt(
     billId: string,
@@ -665,24 +693,55 @@ class EBarimtService {
     }
 
     try {
-      const requestData = {
-        posNo: this.config.posNo,
-        merchantTin: this.config.merchantTin,
-        billId,
-        returnReason: reason || "Буцаалт",
-      };
-
       logger.info("Returning receipt in E-Barimt", { billId, reason });
 
-      const response = await this.client.delete<EBarimtResponse>(`/delete`, {
-        data: requestData,
+      // Official API uses DELETE /rest/receipt
+      // The billId should be passed as query parameter or in request body
+      const response = await this.client.delete<{
+        success: boolean;
+        message?: string;
+        status?: string; // "INACTIVE" or "UNCONFIRMED_RETURN"
+        errorCode?: string;
+        errorMessage?: string;
+      }>(`/rest/receipt`, {
+        params: {
+          id: billId,
+        },
       });
 
-      if (response.data.success) {
-        logger.info("Receipt returned successfully", { billId });
+      const result = response.data;
+
+      if (result.success) {
+        // Check if it's direct deactivation or pending citizen approval
+        const isPendingApproval = result.status === "UNCONFIRMED_RETURN";
+
+        logger.info("Receipt return processed", {
+          billId,
+          status: result.status,
+          isPendingApproval,
+        });
+
+        return {
+          success: true,
+          message: isPendingApproval
+            ? "Баримт буцаалт хүлээгдэж байна. Иргэн ИБАРИМТ аппликейшнээс зөвшөөрөх шаардлагатай."
+            : "Баримт амжилттай идэвхгүй болгогдлоо",
+          data: {
+            id: billId,
+            billId: billId,
+            date: new Date().toISOString(),
+            lottery: "",
+            qrData: "",
+          },
+        };
       }
 
-      return response.data;
+      return {
+        success: false,
+        message: result.message || "Баримт буцаах амжилтгүй",
+        errorCode: result.errorCode,
+        errorMessage: result.errorMessage,
+      };
     } catch (error) {
       logger.error("Error returning receipt", {
         error: error instanceof Error ? error.message : String(error),
@@ -882,7 +941,7 @@ class EBarimtService {
     message: string;
     info?: {
       lotteryCount?: number;
-      billCount?: number;
+      operatorName?: string;
       lastSentDate?: string;
       warningMessage?: string;
     };
@@ -906,8 +965,8 @@ class EBarimtService {
           ? "E-Barimt system is online"
           : "E-Barimt system unavailable",
         info: {
-          lotteryCount: info.lotteryCount,
-          billCount: info.billCount,
+          lotteryCount: info.leftLotteries,
+          operatorName: info.operatorName,
           lastSentDate: info.lastSentDate,
           warningMessage: info.warningMessage,
         },
@@ -919,9 +978,8 @@ class EBarimtService {
       return {
         success: true,
         online: false,
-        message: `E-Barimt system unavailable: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`,
+        message: `E-Barimt system unavailable: ${error instanceof Error ? error.message : "Unknown error"
+          }`,
       };
     }
   }
@@ -1115,9 +1173,8 @@ class EBarimtService {
       });
       return {
         success: false,
-        message: `Failed to get bill: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`,
+        message: `Failed to get bill: ${error instanceof Error ? error.message : "Unknown error"
+          }`,
       };
     }
   }
@@ -1187,30 +1244,158 @@ class EBarimtService {
   }
 
   /**
-   * Get classification codes (BUNA)
+   * Get BUNA classification codes (Бараа, Үйлчилгээний Нэгдсэн Ангилал)
+   * 
+   * This API provides hierarchical classification lookup:
+   * 1. No params → Returns "Салбар" (Sector) list
+   * 2. With p1 → Returns "Дэд салбар" (Sub-sector) list
+   * 3. With p1,p2 → Returns "Бүлэг" (Group) list
+   * 4. With p1,p2,p3 → Returns "Анги" (Class) list
+   * 5. And so on to get BUNA codes and barcodes
+   * 
+   * Official API: GET https://api.ebarimt.mn/api/info/check/barcode/v2/{p4}/{p5}/{p1}/{p2}/{p3}/{p6}
+   * Reference: https://developer.itc.gov.mn/docs/ebarimt-api/said1mgfz0gb7-b-na-baraa-b-teegdeh-nij-angilal-barkod-lavlah
    */
-  async getClassificationCodes(search?: string): Promise<{
+  async getClassificationCodes(params?: {
+    p1?: string; // Салбар (Sector)
+    p2?: string; // Дэд салбар (Sub-sector)
+    p3?: string; // Бүлэг (Group)
+    p4?: string; // Анги (Class)
+    p5?: string; // Дэд анги (Sub-class)
+    p6?: string; // БҮНА код or Barcode
+  }): Promise<{
     success: boolean;
     codes?: Array<{ code: string; name: string }>;
+    level?: string;
     message?: string;
   }> {
     try {
-      const url = search
-        ? `/getClassificationCodes?search=${encodeURIComponent(search)}`
-        : "/getClassificationCodes";
-      const response = await this.client.get(url);
+      // Build the URL path with parameters
+      const p1 = params?.p1 || "";
+      const p2 = params?.p2 || "";
+      const p3 = params?.p3 || "";
+      const p4 = params?.p4 || "";
+      const p5 = params?.p5 || "";
+      const p6 = params?.p6 || "";
+
+      // Official API endpoint on api.ebarimt.mn
+      const apiUrl = `https://api.ebarimt.mn/api/info/check/barcode/v2/${p4}/${p5}/${p1}/${p2}/${p3}/${p6}`;
+
+      logger.info("Fetching BUNA classification codes", {
+        p1, p2, p3, p4, p5, p6
+      });
+
+      const response = await axios.get<Array<[string, string]>>(apiUrl, {
+        headers: {
+          Accept: "application/json",
+        },
+        timeout: 30000,
+      });
+
+      // Response is array of [code, name] tuples
+      const codes = response.data.map(([code, name]) => ({
+        code,
+        name,
+      }));
+
+      // Determine the current level
+      let level = "Салбар";
+      if (p1) level = "Дэд салбар";
+      if (p2) level = "Бүлэг";
+      if (p3) level = "Анги";
+      if (p4) level = "Дэд анги";
+      if (p5) level = "БҮНА код";
+      if (p6) level = "Баркод";
+
+      logger.info("BUNA classification codes retrieved", {
+        level,
+        count: codes.length,
+      });
+
       return {
         success: true,
-        codes: response.data.codes || [],
-        message: "Classification codes retrieved",
+        codes,
+        level,
+        message: `${level} мэдээлэл амжилттай татагдлаа`,
       };
     } catch (error) {
-      logger.error("Error getting classification codes", {
+      logger.error("Error getting BUNA classification codes", {
         error: error instanceof Error ? error.message : String(error),
       });
       return {
         success: false,
-        message: "Failed to get classification codes",
+        message: "БҮНА ангиллын мэдээлэл татахад алдаа гарлаа",
+      };
+    }
+  }
+
+  /**
+   * Get top-level BUNA sectors (Салбар)
+   * Convenience method to get the root classification list
+   */
+  async getBunaSectors(): Promise<{
+    success: boolean;
+    sectors?: Array<{ code: string; name: string }>;
+    message?: string;
+  }> {
+    const result = await this.getClassificationCodes();
+    return {
+      success: result.success,
+      sectors: result.codes,
+      message: result.message,
+    };
+  }
+
+  /**
+   * Look up barcode information in BUNA system
+   * Returns classification details for a given barcode
+   */
+  async lookupBarcode(barcode: string): Promise<{
+    success: boolean;
+    found: boolean;
+    barcode?: string;
+    classificationCode?: string;
+    classificationName?: string;
+    message?: string;
+  }> {
+    try {
+      // Search for barcode in the system
+      const apiUrl = `https://api.ebarimt.mn/api/info/check/barcode/v2//////${barcode}`;
+
+      const response = await axios.get(apiUrl, {
+        headers: {
+          Accept: "application/json",
+        },
+        timeout: 30000,
+      });
+
+      if (response.data && response.data.length > 0) {
+        const [code, name] = response.data[0];
+        return {
+          success: true,
+          found: true,
+          barcode,
+          classificationCode: code,
+          classificationName: name,
+          message: "Баркод олдлоо",
+        };
+      }
+
+      return {
+        success: true,
+        found: false,
+        barcode,
+        message: "Баркод олдсонгүй",
+      };
+    } catch (error) {
+      logger.error("Error looking up barcode", {
+        error: error instanceof Error ? error.message : String(error),
+        barcode,
+      });
+      return {
+        success: false,
+        found: false,
+        message: "Баркод хайхад алдаа гарлаа",
       };
     }
   }

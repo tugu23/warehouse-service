@@ -123,19 +123,9 @@ class SchedulerService {
         };
       }
 
-      if ((info.billCount || 0) === 0) {
-        logger.info("No pending bills to send");
-        return {
-          success: true,
-          sentCount: 0,
-          message: "No pending bills",
-        };
-      }
-
-      logger.info("Pending bills found, sending to central system", {
-        billCount: info.billCount,
-        billAmount: info.billAmount,
-      });
+      // Note: Official /rest/info API doesn't return unsent bill count
+      // We proceed to send data regardless - the API will return actual sent count
+      logger.info("Attempting to send pending bills to central system");
 
       // Send data
       const result = await ebarimtService.sendData();
@@ -188,7 +178,7 @@ class SchedulerService {
         return { message: info.message };
       }
 
-      const lotteryCount = info.lotteryCount || 0;
+      const lotteryCount = info.leftLotteries || 0;
       let warningLevel: "ok" | "low" | "critical" = "ok";
 
       if (lotteryCount < 50) {
