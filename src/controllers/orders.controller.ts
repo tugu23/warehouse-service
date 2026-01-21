@@ -915,8 +915,8 @@ export const getOrderReceiptPDF = async (
     // Detect B2B (organization with TIN)
     const isB2B = !!order.customer.registrationNumber;
 
-    // Register with E-Barimt if not already registered
-    if (!order.ebarimtRegistered) {
+    // Register with E-Barimt if not already registered and E-Barimt is enabled
+    if (!order.ebarimtRegistered && process.env.EBARIMT_ENABLED === "true") {
       logger.info(`Registering order ${order.id} with E-Barimt before generating PDF`);
 
       const ebarimtResult = await ebarimtService.registerReceipt({
@@ -947,10 +947,18 @@ export const getOrderReceiptPDF = async (
           error: errorMsg,
           errorCode: ebarimtResult.errorCode,
         });
-        throw new AppError(
-          `E-Barimt баrimт бүртгэл амжилтгүй: ${errorMsg}`,
-          500
-        );
+
+        // Check if it's a connection/timeout error
+        const isConnectionError = errorMsg.includes("timeout") ||
+          errorMsg.includes("ECONNREFUSED") ||
+          errorMsg.includes("ETIMEDOUT") ||
+          errorMsg.includes("ENOTFOUND");
+
+        const userMessage = isConnectionError
+          ? "E-Barimt системд холбогдох боломжгүй байна. API серверийг шалгана уу."
+          : `E-Bариmt баримт бүртгэл амжилтгүй: ${errorMsg}`;
+
+        throw new AppError(userMessage, 500);
       }
 
       logger.info(`E-Barimt registration successful for order ${order.id}`, {
