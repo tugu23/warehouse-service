@@ -234,15 +234,11 @@ export const createOrder = async (
         }
       }
 
-      // Calculate VAT for Store orders (10%)
-      let vatAmount = new Prisma.Decimal(0);
-      let totalAmount = subtotalAmount;
-
-      if (orderType === "Store") {
-        const vatCalc = vatService.addVAT(subtotalAmount);
-        vatAmount = vatCalc.vat;
-        totalAmount = vatCalc.total;
-      }
+      // Calculate VAT for all orders (both Market and Store) (10%)
+      // Market vs Store only affects product pricing, not VAT calculation
+      const vatCalc = vatService.addVAT(subtotalAmount);
+      const vatAmount = vatCalc.vat;
+      const totalAmount = vatCalc.total;
 
       // Calculate due date for credit payments
       let dueDate = null;
@@ -899,35 +895,21 @@ export const getOrderReceiptPDF = async (
       throw new AppError(req.t.auth.forbidden, 403);
     }
 
-    // Prepare data for PDF generation
-    // Calculate VAT and City Tax (NHAT) for Ulaanbaatar
+    // Use backend-calculated values instead of recalculating
+    // The order already has correct subtotal, VAT, and total amounts
+    const subtotal = parseFloat(order.subtotalAmount?.toString() || "0");
+    const vat = parseFloat(order.vatAmount?.toString() || "0");
     const total = parseFloat(order.totalAmount?.toString() || "0");
+    
+    // City tax (NHAT) - only for Ulaanbaatar Store orders
     const isUlaanbaatar = [
-      "01",
-      "02",
-      "03",
-      "04",
-      "05",
-      "06",
-      "07",
-      "08",
-      "09",
+      "01", "02", "03", "04", "05", "06", "07", "08", "09",
     ].includes(order.customer.district || "06");
-
-    // Calculate with proper tax breakdown
-    let subtotal: number;
-    let vat: number;
+    
+    // Calculate city tax from subtotal if applicable
     let cityTax = 0;
-
-    if (isUlaanbaatar) {
-      // Total = subtotal * (1 + 0.10 + 0.02) = subtotal * 1.12
-      subtotal = total / 1.12;
-      vat = subtotal * 0.1;
-      cityTax = subtotal * 0.02;
-    } else {
-      // Total = subtotal * 1.1
-      subtotal = total / 1.1;
-      vat = total - subtotal;
+    if (isUlaanbaatar && order.orderType === "Store" && subtotal > 0) {
+      cityTax = Math.round(subtotal * 0.02 * 100) / 100;
     }
 
     // Detect B2B (organization with TIN)

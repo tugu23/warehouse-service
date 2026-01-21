@@ -84,7 +84,9 @@ const loginLimiter = rateLimit({
 // General rate limiting
 const generalLimiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
-  max: process.env.NODE_ENV === "test" ? 10000 : config.rateLimit.max, // Higher limit for tests
+  max: process.env.NODE_ENV === "test" ? 10000 : 
+       process.env.NODE_ENV === "development" ? 1000 : // Much higher limit for development
+       config.rateLimit.max, // Use config value for production
   message: "Too many requests, please try again later",
   standardHeaders: true,
   legacyHeaders: false,

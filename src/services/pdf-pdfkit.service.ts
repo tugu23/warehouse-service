@@ -189,9 +189,9 @@ class PDFKitService {
 
     yPos += 10;
 
-    // Simple header with company info - no unnecessary titles
+    // Simple header - just title
     this.setFont(doc, "bold");
-    doc.fontSize(10).text(this.COMPANY_NAME, this.MARGIN, yPos, {
+    doc.fontSize(10).text("ТӨЛБӨРИЙН БАРИМТ", this.MARGIN, yPos, {
       width: contentWidth,
       align: "center",
     });
@@ -207,23 +207,6 @@ class PDFKitService {
       doc.fillColor("black");
       yPos += 10;
     }
-
-    this.setFont(doc, "normal");
-    doc.fontSize(7).text(this.COMPANY_ADDRESS, this.MARGIN, yPos, {
-      width: contentWidth,
-      align: "center",
-    });
-
-    yPos += 10;
-
-    doc
-      .fontSize(7)
-      .text(`Утас: ${this.COMPANY_PHONES.join(", ")}`, this.MARGIN, yPos, {
-        width: contentWidth,
-        align: "center",
-      });
-
-    yPos += 8;
 
     // Divider line
     doc
@@ -242,13 +225,16 @@ class PDFKitService {
     const pageWidth = (doc as any)._pageWidth;
     const contentWidth = (doc as any)._contentWidth;
     const startY = yPos;
+    
+    // Two columns layout
     const col1X = this.MARGIN;
-    const col2X = this.MARGIN + contentWidth / 3;
-    const col3X = this.MARGIN + (contentWidth * 2) / 3;
-    const colWidth = contentWidth / 3 - 10;
+    const col2X = this.MARGIN + contentWidth / 2 + 10;
+    const colWidth = contentWidth / 2 - 10;
 
-    // Column 1: Баримтын мэдээлэл
+    // LEFT COLUMN: Баримт + Борлуулагч
     let y1 = startY;
+    
+    // Баримтын мэдээлэл
     doc.fontSize(7).font("Roboto-Bold");
     doc.text("Баримтын мэдээлэл", col1X, y1, { width: colWidth });
     y1 += 10;
@@ -262,7 +248,7 @@ class PDFKitService {
     doc.font("Roboto").text(data.orderNumber || "N/A", valueX, y1);
     y1 += 9;
 
-    // ДДТД - IMPORTANT
+    // ДДТД
     doc.font("Roboto-Bold").text("ДДТД:", col1X, y1);
     doc.font("Roboto").text(data.ebarimtBillId || "Бүртгэлгүй", valueX, y1);
     y1 += 9;
@@ -277,53 +263,72 @@ class PDFKitService {
     doc
       .font("Roboto")
       .text(this.translatePaymentMethod(data.paymentMethod), valueX, y1);
+    y1 += 12;
 
-    // Column 2: Борлуулагчийн мэдээлэл
+    // Борлуулагч (Company info moved here)
+    doc.fontSize(7).font("Roboto-Bold");
+    doc.text("Борлуулагч", col1X, y1, { width: colWidth });
+    y1 += 10;
+    doc.fontSize(6.5);
+
+    // Company name
+    doc.font("Roboto-Bold").text("Байгууллага:", col1X, y1);
+    doc.font("Roboto").text(this.COMPANY_NAME, col1X, y1 + 9, { width: colWidth });
+    y1 += 18;
+
+    // Company address
+    doc.font("Roboto-Bold").text("Хаяг:", col1X, y1);
+    doc.font("Roboto").text(this.COMPANY_ADDRESS, col1X, y1 + 9, { width: colWidth });
+    y1 += 18;
+
+    // Company phones
+    doc.font("Roboto-Bold").text("Утас:", col1X, y1);
+    doc.font("Roboto").text(this.COMPANY_PHONES.join(", "), col1X, y1 + 9, { width: colWidth });
+    y1 += 18;
+
+    // Agent name
+    doc.font("Roboto-Bold").text("Борлуулагч:", col1X, y1);
+    doc.font("Roboto").text(data.agent.name || "N/A", valueX, y1);
+    y1 += 9;
+
+    // Agent phone
+    if (data.agent.phoneNumber) {
+      doc.font("Roboto-Bold").text("Утас:", col1X, y1);
+      doc.font("Roboto").text(data.agent.phoneNumber, valueX, y1);
+      y1 += 9;
+    }
+
+    // RIGHT COLUMN: Худалдан авагч
     let y2 = startY;
     doc.fontSize(7).font("Roboto-Bold");
-    doc.text("Борлуулагч", col2X, y2, { width: colWidth });
+    doc.text("Худалдан авагч", col2X, y2, { width: colWidth });
     y2 += 10;
     doc.fontSize(6.5);
 
     const labelWidth2 = 28;
     const valueX2 = col2X + labelWidth2;
 
-    // Seller name
-    doc.font("Roboto-Bold").text("Нэр:", col2X, y2);
-    doc.font("Roboto").text(data.agent.name || "N/A", valueX2, y2);
-    y2 += 9;
-
-    // Seller phone
-    if (data.agent.phoneNumber) {
-      doc.font("Roboto-Bold").text("Утас:", col2X, y2);
-      doc.font("Roboto").text(data.agent.phoneNumber, valueX2, y2);
-      y2 += 9;
-    }
-
-    // Column 3: Худалдан авагчийн мэдээлэл
-    let y3 = startY;
-    doc.fontSize(7).font("Roboto-Bold");
-    doc.text("Худалдан авагч", col3X, y3, { width: colWidth });
-    y3 += 10;
-    doc.fontSize(6.5);
-
-    const labelWidth3 = 28;
-    const valueX3 = col3X + labelWidth3;
-
     // Buyer name
-    doc.font("Roboto-Bold").text("Нэр:", col3X, y3);
-    doc.font("Roboto").text(data.customer.name || "N/A", valueX3, y3);
-    y3 += 9;
+    doc.font("Roboto-Bold").text("Нэр:", col2X, y2);
+    doc.font("Roboto").text(data.customer.name || "N/A", valueX2, y2);
+    y2 += 9;
 
     // Buyer phone
     if (data.customer.phoneNumber) {
-      doc.font("Roboto-Bold").text("Утас:", col3X, y3);
-      doc.font("Roboto").text(data.customer.phoneNumber, valueX3, y3);
-      y3 += 9;
+      doc.font("Roboto-Bold").text("Утас:", col2X, y2);
+      doc.font("Roboto").text(data.customer.phoneNumber, valueX2, y2);
+      y2 += 9;
+    }
+
+    // Buyer address
+    if (data.customer.address) {
+      doc.font("Roboto-Bold").text("Хаяг:", col2X, y2);
+      doc.font("Roboto").text(data.customer.address, valueX2, y2, { width: colWidth - labelWidth2 });
+      y2 += 18;
     }
 
     // Find the maximum Y position
-    const maxY = Math.max(y1, y2, y3);
+    const maxY = Math.max(y1, y2);
     yPos = maxY + 8;
 
     // Divider
@@ -524,28 +529,30 @@ class PDFKitService {
     let y2 = yPos;
     doc.fontSize(6.5);
 
-    const vat10Percent = data.subtotal * 0.1;
-    const totalWithVat = data.subtotal + vat10Percent;
+    // Use backend-provided values (they are already calculated correctly)
+    const subtotal = data.subtotal;
+    const vat = data.vat;
+    const total = data.total;
 
     // Subtotal (Барааны нийт дүн)
     doc.font("Roboto-Bold").text("Барааны нийт дүн:", col2X, y2);
     doc
       .font("Roboto")
-      .text(this.formatCurrencyShort(data.subtotal), col2X + 90, y2);
+      .text(this.formatCurrencyShort(subtotal), col2X + 90, y2);
     y2 += 10;
 
     // VAT 10%
     doc.font("Roboto-Bold").text("НӨАТ (10%):", col2X, y2);
     doc
       .font("Roboto")
-      .text(this.formatCurrencyShort(vat10Percent), col2X + 90, y2);
+      .text(this.formatCurrencyShort(vat), col2X + 90, y2);
     y2 += 10;
 
-    // Total (Нийт үнэ = Subtotal + VAT 10%)
+    // Total (Нийт үнэ = Subtotal + VAT)
     doc.font("Roboto-Bold").text("Нийт үнэ:", col2X, y2);
     doc
       .font("Roboto")
-      .text(this.formatCurrencyShort(totalWithVat), col2X + 90, y2);
+      .text(this.formatCurrencyShort(total), col2X + 90, y2);
 
     const maxY = Math.max(y1 + qrSize + 15, y2);
     yPos = maxY + 15;
