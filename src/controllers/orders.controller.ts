@@ -943,9 +943,12 @@ export const getOrderReceiptPDF = async (
 
       if (!ebarimtResult.success || !ebarimtResult.data) {
         const errorMsg = ebarimtResult.message || ebarimtResult.errorMessage || "Unknown error";
+        const errorCode = ebarimtResult.errorCode || "UNKNOWN";
+
         logger.error(`E-Barimt registration failed for order ${order.id}`, {
           error: errorMsg,
-          errorCode: ebarimtResult.errorCode,
+          errorCode: errorCode,
+          fullResponse: JSON.stringify(ebarimtResult), // Log full response for debugging
         });
 
         // Check if it's a connection/timeout error
@@ -956,7 +959,7 @@ export const getOrderReceiptPDF = async (
 
         const userMessage = isConnectionError
           ? "E-Barimt системд холбогдох боломжгүй байна. API серверийг шалгана уу."
-          : `E-Bариmt баримт бүртгэл амжилтгүй: ${errorMsg}`;
+          : `E-Bариmt баримт бүртгэл амжилтгүй [${errorCode}]: ${errorMsg}`;
 
         throw new AppError(userMessage, 500);
       }

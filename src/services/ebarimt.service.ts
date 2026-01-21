@@ -651,6 +651,7 @@ class EBarimtService {
         type: receiptType,
         districtCode,
         hasCityTax: totalCityTax > 0,
+        requestData: JSON.stringify(requestData, null, 2), // Log full request for debugging
       });
 
       // Send request to E-Barimt API (official endpoint: /rest/receipt)
@@ -658,6 +659,12 @@ class EBarimtService {
         "/rest/receipt",
         requestData
       );
+      
+      logger.info("E-Barimt API response received", {
+        orderNumber: orderData.orderNumber,
+        success: response.data.success,
+        response: JSON.stringify(response.data, null, 2), // Log full response for debugging
+      });
 
       if (response.data.success) {
         logger.info("Receipt registered successfully with E-Barimt", {
