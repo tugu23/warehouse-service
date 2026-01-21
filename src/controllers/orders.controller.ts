@@ -770,8 +770,8 @@ export const prepareOrderDocument = async (
       summary: {
         subtotal: parseFloat(
           order.subtotalAmount?.toString() ||
-            order.totalAmount?.toString() ||
-            "0"
+          order.totalAmount?.toString() ||
+          "0"
         ),
         tax: parseFloat(order.vatAmount?.toString() || "0"),
         total: parseFloat(order.totalAmount?.toString() || "0"),
@@ -786,11 +786,10 @@ export const prepareOrderDocument = async (
       },
       notes:
         order.paymentMethod === "Credit"
-          ? `Зээлийн нөхцөл: ${
-              order.creditTermDays
-            } өдөр. Төлбөр төлөх өдөр: ${order.dueDate?.toLocaleDateString(
-              "mn-MN"
-            )}`
+          ? `Зээлийн нөхцөл: ${order.creditTermDays
+          } өдөр. Төлбөр төлөх өдөр: ${order.dueDate?.toLocaleDateString(
+            "mn-MN"
+          )}`
           : "Бэлэн мөнгөөр төлсөн",
       printedAt: new Date(),
     };
@@ -862,6 +861,7 @@ export const getOrderReceiptPDF = async (
                 nameEnglish: true,
                 productCode: true,
                 barcode: true,
+                classificationCode: true,
               },
             },
           },
@@ -900,12 +900,12 @@ export const getOrderReceiptPDF = async (
     const subtotal = parseFloat(order.subtotalAmount?.toString() || "0");
     const vat = parseFloat(order.vatAmount?.toString() || "0");
     const total = parseFloat(order.totalAmount?.toString() || "0");
-    
+
     // City tax (NHAT) - only for Ulaanbaatar Store orders
     const isUlaanbaatar = [
       "01", "02", "03", "04", "05", "06", "07", "08", "09",
     ].includes(order.customer.district || "06");
-    
+
     // Calculate city tax from subtotal if applicable
     let cityTax = 0;
     if (isUlaanbaatar && order.orderType === "Store" && subtotal > 0) {
@@ -914,6 +914,71 @@ export const getOrderReceiptPDF = async (
 
     // Detect B2B (organization with TIN)
     const isB2B = !!order.customer.registrationNumber;
+
+    // Register with E-Barimt if not already registered
+    if (!order.ebarimtRegistered) {
+      logger.info(`Registering order ${order.id} with E-Barimt before generating PDF`);
+
+      const ebarimtResult = await ebarimtService.registerReceipt({
+        orderNumber: order.orderNumber || `ORD-${order.id.toString().padStart(6, "0")}`,
+        customer: {
+          name: order.customer.name,
+          registrationNumber: order.customer.registrationNumber,
+        },
+        items: order.orderItems.map((item) => ({
+          productName: item.product.nameMongolian,
+          barcode: item.product.barcode || undefined,
+          classificationCode: item.product.classificationCode || undefined,
+          quantity: item.quantity,
+          unitPrice: parseFloat(item.unitPrice.toString()),
+          total: parseFloat(item.unitPrice.toString()) * item.quantity,
+        })),
+        subtotal,
+        vat,
+        total,
+        cityTax,
+        paymentMethod: order.paymentMethod,
+        districtCode: order.customer.district || undefined,
+      });
+
+      if (!ebarimtResult.success || !ebarimtResult.data) {
+        const errorMsg = ebarimtResult.message || ebarimtResult.errorMessage || "Unknown error";
+        logger.error(`E-Barimt registration failed for order ${order.id}`, {
+          error: errorMsg,
+          errorCode: ebarimtResult.errorCode,
+        });
+        throw new AppError(
+          `E-Barimt баrimт бүртгэл амжилтгүй: ${errorMsg}`,
+          500
+        );
+      }
+
+      logger.info(`E-Barimt registration successful for order ${order.id}`, {
+        billId: ebarimtResult.data.billId,
+        lottery: ebarimtResult.data.lottery,
+      });
+
+      // Update order with E-Barimt data in database
+      await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          ebarimtId: ebarimtResult.data.id,
+          ebarimtBillId: ebarimtResult.data.billId,
+          ebarimtLottery: ebarimtResult.data.lottery,
+          ebarimtQrData: ebarimtResult.data.qrData,
+          ebarimtRegistered: true,
+          ebarimtDate: new Date(ebarimtResult.data.date),
+        },
+      });
+
+      // Update local order object for PDF generation
+      order.ebarimtId = ebarimtResult.data.id;
+      order.ebarimtBillId = ebarimtResult.data.billId;
+      order.ebarimtLottery = ebarimtResult.data.lottery;
+      order.ebarimtQrData = ebarimtResult.data.qrData;
+      order.ebarimtRegistered = true;
+      order.ebarimtDate = new Date(ebarimtResult.data.date);
+    }
 
     const receiptData = {
       orderId: order.id,
@@ -979,8 +1044,7 @@ export const getOrderReceiptPDF = async (
     res.send(pdfBuffer);
 
     logger.info(
-      `PDF receipt generated for order ${order.id} (${
-        download ? "download" : "view"
+      `PDF receipt generated for order ${order.id} (${download ? "download" : "view"
       })`
     );
   } catch (error) {
