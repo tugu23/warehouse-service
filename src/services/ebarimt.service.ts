@@ -561,13 +561,9 @@ class EBarimtService {
           totalCityTax += itemCityTax;
         }
 
-        return {
+        // Build item object, filtering out empty strings for optional fields
+        const ebarimtItem: any = {
           name: item.productName,
-          barCode: item.barcode || undefined,
-          barCodeType: item.barcode
-            ? this.detectBarcodeType(item.barcode)
-            : undefined,
-          classificationCode: item.classificationCode || undefined,
           taxProductCode: null,
           measureUnit: item.measureUnit || "ширхэг",
           qty: item.quantity,
@@ -576,6 +572,18 @@ class EBarimtService {
           totalVAT: itemVat,
           totalCityTax: itemCityTax,
         };
+
+        // Only add optional fields if they have actual values (not empty strings)
+        if (item.barcode && item.barcode.trim()) {
+          ebarimtItem.barCode = item.barcode;
+          ebarimtItem.barCodeType = this.detectBarcodeType(item.barcode);
+        }
+
+        if (item.classificationCode && item.classificationCode.trim()) {
+          ebarimtItem.classificationCode = item.classificationCode;
+        }
+
+        return ebarimtItem;
       });
 
       // Determine tax type for receipt
@@ -659,7 +667,7 @@ class EBarimtService {
         "/rest/receipt",
         requestData
       );
-      
+
       logger.info("E-Barimt API response received", {
         orderNumber: orderData.orderNumber,
         success: response.data.success,
