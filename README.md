@@ -11,8 +11,6 @@ A secure, scalable, and robust RESTful API backend for managing warehouse operat
 - ✅ Accept-Language header-ээр хэл солих боломжтой
 - ✅ 200+ монгол орчуулга
 
-Дэлгэрэнгүй: [MONGOLIAN_TRANSLATION_GUIDE.md](MONGOLIAN_TRANSLATION_GUIDE.md)
-
 ## 🚀 Technology Stack
 
 - **Runtime**: Node.js with TypeScript
@@ -102,6 +100,7 @@ backend/
 ### Option 1: Docker/Podman (Recommended) 🐳
 
 #### Local Development:
+
 ```bash
 # Quick start (auto-detects Docker or Podman)
 chmod +x scripts/docker-setup.sh
@@ -119,6 +118,7 @@ podman-compose exec backend npx ts-node prisma/seed.ts
 ```
 
 #### Production Deployment via Docker Hub:
+
 ```bash
 # Mac: Build and push to Docker Hub
 ./deploy-to-dockerhub.sh
@@ -127,10 +127,6 @@ podman-compose exec backend npx ts-node prisma/seed.ts
 # PowerShell-д:
 .\deploy-windows.ps1
 ```
-
-**📖 Дэлгэрэнгүй заавар:**
-- [DOCKER.md](DOCKER.md) - Local Docker/Podman setup
-- [DOCKER_HUB_DEPLOYMENT.md](DOCKER_HUB_DEPLOYMENT.md) - Docker Hub deployment (Mac → Windows)
 
 ### Option 2: Manual Installation
 
@@ -192,7 +188,6 @@ podman-compose exec backend npx ts-node prisma/seed.ts
    ```
 
    This will create:
-
    - Default roles (Admin, Manager, SalesAgent)
    - Sample users (see credentials below)
    - Sample customer types
