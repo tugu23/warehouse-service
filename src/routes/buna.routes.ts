@@ -118,6 +118,23 @@ router.get("/check/:bunaCode/:barcode", bunaController.checkBarcodeInBunaCode);
 router.get("/path/:bunaCode", bunaController.getClassificationPath);
 
 /**
+ * @route   GET /api/buna/validate/:bunaCode
+ * @desc    Validate a BUNA code and get its details
+ * @access  Public
+ * @param   bunaCode - 7-digit BUNA code to validate
+ * @returns Validation result with full classification path if valid
+ */
+router.get("/validate/:bunaCode", bunaController.validateBunaCode);
+
+/**
+ * @route   GET /api/buna/suggestions
+ * @desc    Get suggested BUNA codes for common product categories
+ * @access  Public
+ * @returns List of commonly used BUNA codes organized by category
+ */
+router.get("/suggestions", bunaController.getSuggestions);
+
+/**
  * @route   POST /api/buna/cache/clear
  * @desc    Clear the BUNA service cache
  * @access  Public (should be protected in production)

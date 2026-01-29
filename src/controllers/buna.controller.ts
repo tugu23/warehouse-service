@@ -306,3 +306,111 @@ export const clearCache = async (
     next(error);
   }
 };
+
+/**
+ * Validate a BUNA code
+ * GET /api/buna/validate/:bunaCode
+ */
+export const validateBunaCode = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { bunaCode } = req.params;
+    
+    // Check if it's 7 digits
+    if (!/^\d{7}$/.test(bunaCode)) {
+      return res.status(400).json({
+        success: false,
+        valid: false,
+        message: "BUNA code must be exactly 7 digits",
+      });
+    }
+    
+    // Try to get the classification path
+    const path = await bunaService.getClassificationPath(bunaCode);
+    
+    if (!path) {
+      return res.status(404).json({
+        success: false,
+        valid: false,
+        message: `BUNA code ${bunaCode} not found in the system`,
+      });
+    }
+    
+    res.json({
+      success: true,
+      valid: true,
+      message: "BUNA code is valid",
+      data: {
+        bunaCode,
+        name: path.buna.name,
+        fullPath: {
+          sector: { code: path.sector.code, name: path.sector.name },
+          subsector: { code: path.subsector.code, name: path.subsector.name },
+          group: { code: path.group.code, name: path.group.name },
+          class: { code: path.class.code, name: path.class.name },
+          subclass: { code: path.subclass.code, name: path.subclass.name },
+          buna: { code: path.buna.code, name: path.buna.name },
+        },
+      },
+    });
+  } catch (error) {
+    logger.error("Error in validateBunaCode controller", { error });
+    next(error);
+  }
+};
+
+/**
+ * Get suggested BUNA codes for common product categories
+ * GET /api/buna/suggestions
+ */
+export const getSuggestions = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    // Common BUNA codes for frequently used categories
+    const suggestions = [
+      {
+        category: "Food Products - General",
+        sector: "23",
+        sectorName: "Бэлтгэсэн хүнсний бүтээгдэхүүн",
+        examples: [
+          { code: "2349010", name: "Processed food products" },
+          { code: "2341010", name: "Meat and meat products" },
+          { code: "2342010", name: "Fish and seafood products" },
+        ],
+      },
+      {
+        category: "Beverages",
+        sector: "24",
+        sectorName: "Ундаа",
+        examples: [
+          { code: "2401010", name: "Non-alcoholic beverages" },
+          { code: "2402010", name: "Alcoholic beverages" },
+        ],
+      },
+      {
+        category: "Household Products",
+        sector: "35",
+        sectorName: "Гэр ахуйн бүтээгдэхүүн",
+        examples: [
+          { code: "3501010", name: "Cleaning products" },
+          { code: "3502010", name: "Personal care products" },
+        ],
+      },
+    ];
+    
+    res.json({
+      success: true,
+      data: suggestions,
+      note: "These are example codes. Use the hierarchy endpoints to browse all available codes.",
+    });
+  } catch (error) {
+    logger.error("Error in getSuggestions controller", { error });
+    next(error);
+  }
+};
