@@ -369,7 +369,7 @@ router.post(
       // Check if already registered
       if (order.ebarimtRegistered) {
         throw new AppError(
-          `Order already registered with e-Barimt. Bill ID: ${order.ebarimtBillId}, Lottery: ${order.ebarimtLottery}`,
+          `Order already registered with e-Barimt. ДДТД: ${order.ebarimtBillId}`,
           400
         );
       }
@@ -402,33 +402,31 @@ router.post(
       const result = await ebarimtService.registerBill(ebarimtData);
 
       if (result.success) {
-        // Update order with e-Barimt information
+        // Update order (do NOT persist lottery/qrData per legal requirement)
         await prisma.order.update({
           where: { id: order.id },
           data: {
             ebarimtId: result.id,
             ebarimtBillId: result.billId,
-            ebarimtLottery: result.lottery,
-            ebarimtQrData: result.qrData,
             ebarimtRegistered: true,
             ebarimtDate: new Date(),
           },
         });
 
         logger.info(
-          `E-Barimt registration for order ${orderId}: Lottery ${result.lottery}`
+          `E-Barimt registration for order ${orderId}: ДДТД ${result.billId}`
         );
 
-        // Determine if B2B (no lottery for organizations)
         const isB2B = !!order.customer.registrationNumber;
 
+        // Return lottery/qrData for immediate printing only (not persisted)
         res.json({
           status: "success",
           data: {
             orderId: order.id,
             ebarimtId: result.id,
             billId: result.billId,
-            lottery: isB2B ? undefined : result.lottery, // No lottery for B2B
+            lottery: isB2B ? undefined : result.lottery,
             qrData: result.qrData,
             isB2B,
             message: result.message,
@@ -681,14 +679,12 @@ router.post(
       });
 
       if (result.success) {
-        // Update order with new e-Barimt information
+        // Update order (do NOT persist lottery/qrData per legal requirement)
         await prisma.order.update({
           where: { id: order.id },
           data: {
             ebarimtId: result.data?.id,
             ebarimtBillId: result.data?.billId,
-            ebarimtLottery: result.data?.lottery,
-            ebarimtQrData: result.data?.qrData,
             ebarimtDate: new Date(),
           },
         });
@@ -701,6 +697,7 @@ router.post(
             orderId: order.id,
             newBillId: result.data?.billId,
             lottery: result.data?.lottery,
+            qrData: result.data?.qrData,
             message: "Bill edited successfully",
           },
         });
@@ -778,14 +775,12 @@ router.post(
       });
 
       if (result.success && result.data) {
-        // Update order with e-Barimt information
+        // Update order (do NOT persist lottery/qrData per legal requirement)
         await prisma.order.update({
           where: { id: order.id },
           data: {
             ebarimtId: result.data.id,
             ebarimtBillId: result.data.billId,
-            ebarimtLottery: result.data.lottery,
-            ebarimtQrData: result.data.qrData,
             ebarimtRegistered: true,
             ebarimtDate: new Date(),
           },
@@ -793,12 +788,14 @@ router.post(
 
         logger.info(`Supplementary e-Barimt issued for order ${orderId}`);
 
+        // Return lottery/qrData for immediate printing only
         res.json({
           status: "success",
           data: {
             orderId: order.id,
             billId: result.data.billId,
             lottery: result.data.lottery,
+            qrData: result.data.qrData,
             message: "Supplementary bill issued successfully",
           },
         });

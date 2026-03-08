@@ -320,6 +320,7 @@ export const createOrder = async (
             name: order.customer.name,
             registrationNumber: order.customer.registrationNumber,
           },
+          consumerNo: (order.customer as any).ebarimtConsumerNo || undefined,
           items: order.orderItems.map((item) => ({
             productName: item.product.nameMongolian,
             barcode: item.product.barcode || undefined,
@@ -334,14 +335,12 @@ export const createOrder = async (
         });
 
         if (ebarimtResult.success && ebarimtResult.data) {
-          // Update order with E-Barimt information
+          // Update order with E-Barimt information (do NOT persist lottery/qrData per legal requirement)
           await prisma.order.update({
             where: { id: order.id },
             data: {
               ebarimtId: ebarimtResult.data.id,
               ebarimtBillId: ebarimtResult.data.billId,
-              ebarimtLottery: ebarimtResult.data.lottery,
-              ebarimtQrData: ebarimtResult.data.qrData,
               ebarimtRegistered: true,
               ebarimtDate: new Date(ebarimtResult.data.date),
             },
@@ -901,10 +900,9 @@ export const getOrderReceiptPDF = async (
     const vat = parseFloat(order.vatAmount?.toString() || "0");
     const total = parseFloat(order.totalAmount?.toString() || "0");
 
-    // City tax (NHAT) - only for Ulaanbaatar Store orders
-    const isUlaanbaatar = [
-      "01", "02", "03", "04", "05", "06", "07", "08", "09",
-    ].includes(order.customer.district || "06");
+    // City tax (NHAT) - only for Ulaanbaatar Store orders (4-digit codes, prefix "25")
+    const districtCode = order.customer.district || "2506";
+    const isUlaanbaatar = districtCode.startsWith("25");
 
     // Calculate city tax from subtotal if applicable
     let cityTax = 0;
@@ -916,6 +914,10 @@ export const getOrderReceiptPDF = async (
     const isB2B = !!order.customer.registrationNumber;
 
     // Register with E-Barimt if not already registered and E-Barimt is enabled
+    // lottery and qrData are returned for immediate printing but NOT persisted to DB
+    let ebarimtLotteryForPrint: string | undefined;
+    let ebarimtQrDataForPrint: string | undefined;
+
     if (!order.ebarimtRegistered && process.env.EBARIMT_ENABLED === "true") {
       logger.info(`Registering order ${order.id} with E-Barimt before generating PDF`);
 
@@ -925,6 +927,7 @@ export const getOrderReceiptPDF = async (
           name: order.customer.name,
           registrationNumber: order.customer.registrationNumber,
         },
+        consumerNo: (order.customer as any).ebarimtConsumerNo || undefined,
         items: order.orderItems.map((item) => ({
           productName: item.product.nameMongolian,
           barcode: item.product.barcode || undefined,
@@ -948,10 +951,9 @@ export const getOrderReceiptPDF = async (
         logger.error(`E-Barimt registration failed for order ${order.id}`, {
           error: errorMsg,
           errorCode: errorCode,
-          fullResponse: JSON.stringify(ebarimtResult), // Log full response for debugging
+          fullResponse: JSON.stringify(ebarimtResult),
         });
 
-        // Check if it's a connection/timeout error
         const isConnectionError = errorMsg.includes("timeout") ||
           errorMsg.includes("ECONNREFUSED") ||
           errorMsg.includes("ETIMEDOUT") ||
@@ -969,24 +971,23 @@ export const getOrderReceiptPDF = async (
         lottery: ebarimtResult.data.lottery,
       });
 
-      // Update order with E-Barimt data in database
+      // Persist only ДДТД and registration status (NOT lottery/qrData per legal requirement)
       await prisma.order.update({
         where: { id: order.id },
         data: {
           ebarimtId: ebarimtResult.data.id,
           ebarimtBillId: ebarimtResult.data.billId,
-          ebarimtLottery: ebarimtResult.data.lottery,
-          ebarimtQrData: ebarimtResult.data.qrData,
           ebarimtRegistered: true,
           ebarimtDate: new Date(ebarimtResult.data.date),
         },
       });
 
-      // Update local order object for PDF generation
+      // Keep lottery/qrData in memory for immediate PDF printing only
+      ebarimtLotteryForPrint = ebarimtResult.data.lottery;
+      ebarimtQrDataForPrint = ebarimtResult.data.qrData;
+
       order.ebarimtId = ebarimtResult.data.id;
       order.ebarimtBillId = ebarimtResult.data.billId;
-      order.ebarimtLottery = ebarimtResult.data.lottery;
-      order.ebarimtQrData = ebarimtResult.data.qrData;
       order.ebarimtRegistered = true;
       order.ebarimtDate = new Date(ebarimtResult.data.date);
     }
@@ -1026,11 +1027,11 @@ export const getOrderReceiptPDF = async (
       remainingAmount: parseFloat(order.remainingAmount?.toString() || "0"),
       creditTermDays: order.creditTermDays,
       dueDate: order.dueDate,
-      // E-Barimt fields
+      // E-Barimt fields (lottery/qrData from memory only, not persisted)
       ebarimtId: order.ebarimtId,
       ebarimtBillId: order.ebarimtBillId,
-      ebarimtLottery: isB2B ? undefined : order.ebarimtLottery, // No lottery for B2B
-      ebarimtQrData: order.ebarimtQrData,
+      ebarimtLottery: isB2B ? undefined : ebarimtLotteryForPrint,
+      ebarimtQrData: ebarimtQrDataForPrint,
       ebarimtRegistered: order.ebarimtRegistered,
       ebarimtDate: order.ebarimtDate,
       isB2B, // Flag for PDF service

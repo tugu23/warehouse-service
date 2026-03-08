@@ -31,7 +31,7 @@ export const config = {
     merchantTin: process.env.EBARIMT_MERCHANT_TIN || "",
     apiKey: process.env.EBARIMT_API_KEY || "",
     apiSecret: process.env.EBARIMT_API_SECRET || "",
-    districtCode: process.env.EBARIMT_DISTRICT_CODE || "01",
+    districtCode: process.env.EBARIMT_DISTRICT_CODE || "2501",
     mockMode: process.env.EBARIMT_MOCK_MODE === "true" || true,
   },
   creditPayment: {

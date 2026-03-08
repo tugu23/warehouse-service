@@ -292,14 +292,12 @@ class SchedulerService {
           const registerResult = await ebarimtService.registerBill(ebarimtData);
 
           if (registerResult.success) {
-            // Update order
+            // Update order (do NOT persist lottery/qrData per legal requirement)
             await prisma.order.update({
               where: { id: order.id },
               data: {
                 ebarimtId: registerResult.id,
                 ebarimtBillId: registerResult.billId,
-                ebarimtLottery: registerResult.lottery,
-                ebarimtQrData: registerResult.qrData,
                 ebarimtRegistered: true,
                 ebarimtDate: new Date(),
               },

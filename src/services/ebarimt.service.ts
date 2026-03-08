@@ -39,6 +39,7 @@ interface EBarimtReceiptItem {
   invoiceId?: string | null;
   bankAccountNo?: string;
   iBan?: string;
+  data?: Record<string, unknown>;
   items: EBarimtItem[];
 }
 
@@ -52,16 +53,34 @@ interface EBarimtRequest {
   merchantTin: string;
   posNo: string;
   customerTin?: string | null;
-  consumerNo?: string; // Order number (only for B2C, 8-digit like "00000003")
-  type: "B2C_RECEIPT" | "B2B_RECEIPT";
+  consumerNo?: string; // Customer's eBarimt app registration number (8-digit)
+  type: "B2C_RECEIPT" | "B2B_RECEIPT" | "B2C_INVOICE" | "B2B_INVOICE" | "STOCK_QR";
   inactiveId?: string | null; // For return receipts
   reportMonth?: string | null; // YYYYMM format for supplement
   billIdSuffix?: string;
+  data?: Record<string, unknown>;
   receipts: EBarimtReceiptItem[];
   payments: Array<{
-    code: "CASH" | "CARD" | "BANK" | "MOBILE" | "CREDIT";
+    code: "CASH" | "PAYMENT_CARD" | "BANK_TRANSFER" | "EASY_BANK_CARD";
     status: "PAID" | "UNPAID";
     paidAmount: number;
+    data?: Record<string, unknown>;
+  }>;
+}
+
+// Raw PosAPI 3.0 response from POST /rest/receipt
+interface PosApiReceiptResponse {
+  id: string;        // ДДТД (33-digit)
+  posId?: number;     // PosAPI system number
+  status: string;     // Receipt status
+  message: string;    // Description
+  qrData: string;     // QR Code value
+  lottery: string;    // Lottery number
+  date: string;       // Receipt print date
+  easyRegister?: boolean; // Easy registration performed
+  receipts?: Array<{
+    id: string;             // Sub-receipt ДДТД
+    bankAccountId?: string; // Bank account ID
   }>;
 }
 
@@ -69,13 +88,13 @@ interface EBarimtResponse {
   success: boolean;
   message?: string;
   data?: {
-    id: string; // E-Barimt ID
-    billId: string; // ДДТД (Bill ID)
+    id: string;        // ДДТД (33-digit)
+    billId: string;    // Same as id (backward compat alias)
     date: string;
-    lottery: string; // Сугалааны дугаар
-    qrData: string; // QR code data
-    billIdHash?: string;
-    lotteryWarningMsg?: string;
+    lottery: string;
+    qrData: string;
+    easyRegister?: boolean;
+    receipts?: Array<{ id: string; bankAccountId?: string }>;
   };
   errorCode?: string;
   errorMessage?: string;
@@ -142,17 +161,19 @@ interface BillEditRequest {
   newData?: Partial<EBarimtRequest>;
 }
 
-// District codes for Ulaanbaatar (for NHAT calculation)
+// 4-digit district codes for Ulaanbaatar (for NHAT calculation)
+// Official PosAPI 3.0 requires 4-digit codes (prefix "25" = Улаанбаатар)
+const ULAANBAATAR_DISTRICT_PREFIX = "25";
 const ULAANBAATAR_DISTRICTS = [
-  "01", // Баянзүрх
-  "02", // Баянгол
-  "03", // Сонгинохайрхан
-  "04", // Хан-Уул
-  "05", // Чингэлтэй
-  "06", // Сүхбаатар
-  "07", // Багануур
-  "08", // Багахангай
-  "09", // Налайх
+  "2501", // Баянзүрх
+  "2502", // Баянгол
+  "2503", // Сонгинохайрхан
+  "2504", // Хан-Уул
+  "2505", // Чингэлтэй
+  "2506", // Сүхбаатар
+  "2507", // Багануур
+  "2508", // Багахангай
+  "2509", // Налайх
 ];
 
 // VAT rate constant
@@ -173,7 +194,7 @@ class EBarimtService {
       posNo: process.env.EBARIMT_POS_NO || "10012516",
       merchantTin: process.env.EBARIMT_MERCHANT_TIN || process.env.EBARIMT_REG_NO || "37900846788",
       apiKey: process.env.EBARIMT_API_KEY,
-      districtCode: process.env.EBARIMT_DISTRICT_CODE || "06", // Default: Сүхбаатар
+      districtCode: process.env.EBARIMT_DISTRICT_CODE || "2506", // Default: Сүхбаатар (4-digit)
       branchNo: (process.env.EBARIMT_BRANCH_NO || "1").toString().padStart(3, "0"), // 3-digit string like "001"
       macAddress: process.env.EBARIMT_MAC_ADDRESS,
     };
@@ -373,7 +394,7 @@ class EBarimtService {
     try {
       logger.info("Sending data to central system");
 
-      const response = await this.client.get<SendDataResponse>("/sendData");
+      const response = await this.client.get<SendDataResponse>("/rest/send");
 
       if (response.data.success) {
         logger.info("Data sent successfully to central system", {
@@ -465,19 +486,19 @@ class EBarimtService {
         error: error instanceof Error ? error.message : String(error),
       });
 
-      // Return default Ulaanbaatar districts as fallback
+      // Return default Ulaanbaatar districts as fallback (4-digit codes)
       return {
         success: true,
         districts: [
-          { code: "01", name: "Баянзүрх" },
-          { code: "02", name: "Баянгол" },
-          { code: "03", name: "Сонгинохайрхан" },
-          { code: "04", name: "Хан-Уул" },
-          { code: "05", name: "Чингэлтэй" },
-          { code: "06", name: "Сүхбаатар" },
-          { code: "07", name: "Багануур" },
-          { code: "08", name: "Багахангай" },
-          { code: "09", name: "Налайх" },
+          { code: "2501", name: "Баянзүрх" },
+          { code: "2502", name: "Баянгол" },
+          { code: "2503", name: "Сонгинохайрхан" },
+          { code: "2504", name: "Хан-Уул" },
+          { code: "2505", name: "Чингэлтэй" },
+          { code: "2506", name: "Сүхбаатар" },
+          { code: "2507", name: "Багануур" },
+          { code: "2508", name: "Багахангай" },
+          { code: "2509", name: "Налайх" },
         ],
         message: "Using default district codes",
       };
@@ -496,6 +517,7 @@ class EBarimtService {
       name: string;
       registrationNumber?: string | null;
     };
+    consumerNo?: string; // Customer's eBarimt app registration number (8-digit)
     items: Array<{
       productName: string;
       barcode?: string;
@@ -586,6 +608,15 @@ class EBarimtService {
         return ebarimtItem;
       });
 
+      // Validate: every item must have either barCode or classificationCode
+      for (const item of items) {
+        if (!item.barCode && !item.classificationCode) {
+          logger.warn(`Item "${item.name}" missing barCode and classificationCode`, {
+            itemName: item.name,
+          });
+        }
+      }
+
       // Determine tax type for receipt
       const taxType = orderData.items.some(i => i.vatType === "VAT_FREE")
         ? "VAT_FREE" as const
@@ -610,13 +641,9 @@ class EBarimtService {
         }
       }
 
-      // Generate 8-digit consumerNo for B2C from orderNumber (e.g., "ORD-000003" -> "00000003")
-      let consumerNo: string | undefined;
-      if (receiptType === "B2C_RECEIPT") {
-        // Extract numbers from orderNumber and pad to 8 digits
-        const numbers = orderData.orderNumber.replace(/\D/g, "");
-        consumerNo = numbers.padStart(8, "0");
-      }
+      // consumerNo is the customer's eBarimt app registration number (8-digit)
+      // Only pass if explicitly provided; do NOT generate from order number
+      const consumerNo = receiptType === "B2C_RECEIPT" ? orderData.consumerNo : undefined;
 
       // Prepare request data using official API format
       const requestData: EBarimtRequest = {
@@ -646,7 +673,7 @@ class EBarimtService {
         ],
         payments: [
           {
-            code: paymentCode as "CASH" | "CARD" | "BANK" | "MOBILE" | "CREDIT",
+            code: paymentCode as "CASH" | "PAYMENT_CARD" | "BANK_TRANSFER" | "EASY_BANK_CARD",
             status: "PAID",
             paidAmount: orderData.total,
           },
@@ -662,33 +689,58 @@ class EBarimtService {
         requestData: JSON.stringify(requestData, null, 2), // Log full request for debugging
       });
 
-      // Send request to E-Barimt API (official endpoint: /rest/receipt)
-      const response = await this.client.post<EBarimtResponse>(
+      // Send request to E-Barimt API (official endpoint: POST /rest/receipt)
+      // PosAPI 3.0 returns flat response: { id, posId, status, message, qrData, lottery, date, ... }
+      const response = await this.client.post<PosApiReceiptResponse>(
         "/rest/receipt",
         requestData
       );
 
+      const raw = response.data;
+
       logger.info("E-Barimt API response received", {
         orderNumber: orderData.orderNumber,
-        success: response.data.success,
-        response: JSON.stringify(response.data, null, 2), // Log full response for debugging
+        status: raw.status,
+        id: raw.id,
+        response: JSON.stringify(raw, null, 2),
       });
 
-      if (response.data.success) {
+      // PosAPI returns status field; a valid ДДТД means success
+      const isSuccess = !!raw.id && raw.id.length > 0;
+
+      if (isSuccess) {
         logger.info("Receipt registered successfully with E-Barimt", {
           orderNumber: orderData.orderNumber,
-          billId: response.data.data?.billId,
-          lottery: response.data.data?.lottery,
+          billId: raw.id,
+          lottery: raw.lottery,
         });
-      } else {
-        logger.error("E-Barimt registration failed", {
-          orderNumber: orderData.orderNumber,
-          error: response.data.errorMessage,
-          errorCode: response.data.errorCode,
-        });
+
+        return {
+          success: true,
+          data: {
+            id: raw.id,
+            billId: raw.id,
+            date: raw.date,
+            lottery: raw.lottery,
+            qrData: raw.qrData,
+            easyRegister: raw.easyRegister,
+            receipts: raw.receipts,
+          },
+        };
       }
 
-      return response.data;
+      logger.error("E-Barimt registration failed", {
+        orderNumber: orderData.orderNumber,
+        error: raw.message,
+        status: raw.status,
+      });
+
+      return {
+        success: false,
+        message: raw.message || "Registration failed",
+        errorCode: raw.status,
+        errorMessage: raw.message,
+      };
     } catch (error) {
       // Log detailed error information
       if (axios.isAxiosError(error)) {
@@ -743,7 +795,7 @@ class EBarimtService {
    * Check if district is in Ulaanbaatar (requires NHAT)
    */
   private isUlaanbaatarDistrict(districtCode: string): boolean {
-    return ULAANBAATAR_DISTRICTS.includes(districtCode);
+    return districtCode.startsWith(ULAANBAATAR_DISTRICT_PREFIX);
   }
 
   // ==================== BILL OPERATIONS ====================
@@ -838,7 +890,8 @@ class EBarimtService {
 
   /**
    * Edit/correct a receipt - Баримт засварлах
-   * Note: Only available within the same month
+   * PosAPI 3.0: POST /rest/receipt with inactiveId set to original ДДТД
+   * The original receipt gets deactivated and a new corrected one is issued
    */
   async editReceipt(editRequest: BillEditRequest): Promise<EBarimtResponse> {
     if (!this.isEnabled) {
@@ -855,46 +908,63 @@ class EBarimtService {
         editType: editRequest.editType,
       });
 
-      // First, return the original bill
-      const returnResult = await this.returnReceipt(
-        editRequest.originalBillId,
-        editRequest.reason || `Засварлах: ${editRequest.editType}`
-      );
+      // For RETURN only, use DELETE endpoint
+      if (editRequest.editType === "RETURN") {
+        return this.returnReceipt(
+          editRequest.originalBillId,
+          editRequest.reason || "Баримт буцаах"
+        );
+      }
 
-      if (!returnResult.success) {
+      // For EDIT and SUPPLEMENT: create new receipt with inactiveId referencing original
+      // PosAPI 3.0 automatically deactivates the original and issues a new one
+      if (!editRequest.newData) {
         return {
           success: false,
-          message: `Failed to return original bill: ${returnResult.message}`,
-          errorCode: returnResult.errorCode,
+          message: "New data is required for edit/supplement",
+          errorCode: "MISSING_DATA",
         };
       }
 
-      // If just returning, we're done
-      if (editRequest.editType === "RETURN") {
-        return returnResult;
-      }
+      const correctedData: EBarimtRequest = {
+        ...editRequest.newData as EBarimtRequest,
+        inactiveId: editRequest.originalBillId,
+      };
 
-      // For EDIT and SUPPLEMENT, create a new bill with corrected data
-      if (editRequest.newData) {
-        const newBillData = {
-          ...editRequest.newData,
-          returnBillId: editRequest.originalBillId, // Reference to original
-        };
+      const response = await this.client.post<PosApiReceiptResponse>(
+        "/rest/receipt",
+        correctedData
+      );
 
-        const response = await this.client.post<EBarimtResponse>(
-          "/put",
-          newBillData
-        );
+      const raw = response.data;
+      const isSuccess = !!raw.id && raw.id.length > 0;
 
+      if (isSuccess) {
         logger.info("Corrected receipt created", {
           originalBillId: editRequest.originalBillId,
-          newBillId: response.data.data?.billId,
+          newBillId: raw.id,
         });
 
-        return response.data;
+        return {
+          success: true,
+          data: {
+            id: raw.id,
+            billId: raw.id,
+            date: raw.date,
+            lottery: raw.lottery,
+            qrData: raw.qrData,
+            easyRegister: raw.easyRegister,
+            receipts: raw.receipts,
+          },
+        };
       }
 
-      return returnResult;
+      return {
+        success: false,
+        message: raw.message || "Failed to edit receipt",
+        errorCode: raw.status,
+        errorMessage: raw.message,
+      };
     } catch (error) {
       logger.error("Error editing receipt", {
         error: error instanceof Error ? error.message : String(error),
@@ -993,11 +1063,13 @@ class EBarimtService {
   private mapPaymentMethod(method: string): string {
     const paymentMapping: { [key: string]: string } = {
       Cash: "CASH",
-      Card: "CARD",
-      BankTransfer: "BANK",
-      Credit: "CREDIT",
-      QR: "MOBILE",
-      Mobile: "MOBILE",
+      Card: "PAYMENT_CARD",
+      BankTransfer: "BANK_TRANSFER",
+      Sales: "CASH",
+      Padan: "CASH",
+      Credit: "CASH",
+      QR: "PAYMENT_CARD",
+      Mobile: "PAYMENT_CARD",
     };
 
     return paymentMapping[method] || "CASH";
@@ -1071,6 +1143,7 @@ class EBarimtService {
     customer?: {
       name?: string;
       registrationNumber?: string | null;
+      ebarimtConsumerNo?: string | null;
       district?: string | null;
     } | null;
     orderItems: Array<{
@@ -1089,6 +1162,7 @@ class EBarimtService {
   }): {
     orderNumber: string;
     customer: { name: string; registrationNumber?: string | null };
+    consumerNo?: string;
     items: Array<{
       productName: string;
       barcode?: string;
@@ -1144,6 +1218,7 @@ class EBarimtService {
         name: order.customer?.name || "Жирэмсэн худалдан авагч",
         registrationNumber: order.customer?.registrationNumber,
       },
+      consumerNo: order.customer?.ebarimtConsumerNo || undefined,
       items: order.orderItems.map((item) => {
         const unitPrice = toNum(item.unitPrice);
         const itemTotal = unitPrice * item.quantity;
@@ -1179,6 +1254,7 @@ class EBarimtService {
   async registerBill(data: {
     orderNumber: string;
     customer: { name: string; registrationNumber?: string | null };
+    consumerNo?: string;
     items: Array<{
       productName: string;
       barcode?: string;
