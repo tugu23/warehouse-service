@@ -155,7 +155,7 @@ router.post(
       .isIn(["Cash", "Credit", "BankTransfer", "Sales", "Padan"])
       .withMessage("Invalid payment method"),
     body("creditTermDays")
-      .optional()
+      .optional({ nullable: true, checkFalsy: true })
       .isInt({ min: 1 })
       .withMessage("Credit term days must be a positive integer"),
   ]),

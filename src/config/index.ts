@@ -13,6 +13,7 @@ export const config = {
   cors: {
     allowedOrigins: process.env.ALLOWED_ORIGINS?.split(",") || [
       "http://localhost:3000",
+      "http://localhost:5173",
     ],
   },
   rateLimit: {
@@ -23,7 +24,7 @@ export const config = {
     url: process.env.POS_API_URL || "http://localhost:8080/api",
     apiKey: process.env.POS_API_KEY || "",
     timeout: parseInt(process.env.POS_API_TIMEOUT || "30000", 10),
-    mockMode: process.env.POS_API_MOCK_MODE === "true" || true,
+    mockMode: process.env.POS_API_MOCK_MODE === "true",
   },
   ebarimt: {
     apiUrl: process.env.EBARIMT_API_URL || "https://api.ebarimt.mn/api",
@@ -32,7 +33,7 @@ export const config = {
     apiKey: process.env.EBARIMT_API_KEY || "",
     apiSecret: process.env.EBARIMT_API_SECRET || "",
     districtCode: process.env.EBARIMT_DISTRICT_CODE || "2501",
-    mockMode: process.env.EBARIMT_MOCK_MODE === "true" || true,
+    mockMode: process.env.EBARIMT_MOCK_MODE === "true",
   },
   creditPayment: {
     defaultTermDays: parseInt(process.env.DEFAULT_CREDIT_TERM_DAYS || "30", 10),

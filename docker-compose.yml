@@ -27,12 +27,12 @@ services:
   # Backend API (Production)
   backend:
     # Option 1: Build locally (uncomment to use)
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
+    build:
+      context: .
+      dockerfile: Dockerfile
     
     # Option 2: Use Docker Hub image (recommended for deployment)
-    image: tmshuu/warehouse-service:latest
+    # image: tmshuu/warehouse-service:latest
     
     container_name: warehouse-backend
     restart: unless-stopped

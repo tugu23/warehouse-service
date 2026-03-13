@@ -29,6 +29,11 @@ const gracefulShutdown = async (signal: string) => {
 // Start server
 const startServer = async () => {
   try {
+    logger.info(`DATABASE_URL env is ${process.env.DATABASE_URL ? "set" : "missing"}`);
+    if (process.env.DATABASE_URL) {
+      logger.info(`DATABASE_URL value: ${process.env.DATABASE_URL}`);
+    }
+
     // Test database connection
     await prisma.$connect();
     logger.info("Database connected successfully");

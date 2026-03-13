@@ -20,17 +20,32 @@ export const createOrder = async (
       customerId,
       items,
       paymentMethod = "Cash",
-      creditTermDays,
+      creditTermDays: creditTermDaysRaw,
       orderType = "Store", // Default to Store
       deliveryDate,
     } = req.body;
+
+    const customerIdNum = Number(customerId);
+    if (!Number.isInteger(customerIdNum)) {
+      throw new AppError("Valid customerId is required", 400);
+    }
+
+    const creditTermDays =
+      creditTermDaysRaw === undefined ||
+      creditTermDaysRaw === null ||
+      creditTermDaysRaw === ""
+        ? undefined
+        : Number(creditTermDaysRaw);
 
     if (!items || items.length === 0) {
       throw new AppError(req.t.orders.noItems, 400);
     }
 
     // Validate credit terms if payment method is Credit
-    if (paymentMethod === "Credit" && !creditTermDays) {
+    if (
+      paymentMethod === "Credit" &&
+      (!creditTermDays || !Number.isFinite(creditTermDays))
+    ) {
       throw new AppError("Зээлийн төлбөрт хугацаа заах шаардлагатай", 400);
     }
 
@@ -42,14 +57,8 @@ export const createOrder = async (
       );
     }
 
-    // Market order validation: must have future delivery date
-    if (orderType === "Market") {
-      if (!deliveryDate) {
-        throw new AppError(
-          "Захын захиалгад хүргэлтийн огноо заавал шаардлагатай",
-          400
-        );
-      }
+    // Market order: delivery date is optional, but if provided must be in the future
+    if (orderType === "Market" && deliveryDate) {
       const deliveryDateObj = startOfDay(new Date(deliveryDate));
       const today = startOfDay(new Date());
 
@@ -147,28 +156,13 @@ export const createOrder = async (
           );
         }
 
-        // Determine price based on customer type from ProductPrice table
-        let unitPrice: Prisma.Decimal | null = null;
+        // Determine price independent of customer/org selection.
+        // Market orders use wholesale; Store orders use retail.
+        let unitPrice: Prisma.Decimal | null =
+          orderType === "Market" ? product.priceWholesale : product.priceRetail;
 
-        // First, try to get price from ProductPrice table based on customer type
-        if (customer.customerTypeId) {
-          const productPrice = await tx.productPrice.findUnique({
-            where: {
-              productId_customerTypeId: {
-                productId: item.productId,
-                customerTypeId: customer.customerTypeId,
-              },
-            },
-          });
-          if (productPrice) {
-            unitPrice = productPrice.price;
-          }
-        }
-
-        // Fallback to product's default prices if no ProductPrice found
-        if (!unitPrice) {
-          unitPrice = product.priceRetail || product.priceWholesale;
-        }
+        // Fallback if one side is missing
+        if (!unitPrice) unitPrice = product.priceRetail || product.priceWholesale;
 
         if (!unitPrice) {
           throw new AppError(
@@ -253,7 +247,7 @@ export const createOrder = async (
       // Create order with payment information
       const newOrder = await tx.order.create({
         data: {
-          customerId,
+          customerId: customerIdNum,
           agentId: authReq.user!.userId,
           orderType,
           deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
@@ -263,7 +257,7 @@ export const createOrder = async (
           status: "Pending",
           paymentMethod,
           paymentStatus,
-          creditTermDays: creditTermDays || null,
+          creditTermDays: creditTermDays ?? null,
           dueDate,
           paidAmount: paymentMethod === "Cash" ? totalAmount : 0,
           remainingAmount: paymentMethod === "Cash" ? 0 : totalAmount,
@@ -913,8 +907,6 @@ export const getOrderReceiptPDF = async (
     // Detect B2B (organization with TIN)
     const isB2B = !!order.customer.registrationNumber;
 
-    // Register with E-Barimt if not already registered and E-Barimt is enabled
-    // lottery and qrData are returned for immediate printing but NOT persisted to DB
     let ebarimtLotteryForPrint: string | undefined;
     let ebarimtQrDataForPrint: string | undefined;
 
