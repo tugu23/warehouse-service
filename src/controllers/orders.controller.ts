@@ -295,69 +295,8 @@ export const createOrder = async (
       `New ${order.orderType} order created: Order ID ${order.id}, Subtotal: ${order.subtotalAmount}, VAT: ${order.vatAmount}, Total: ${order.totalAmount}, Payment: ${paymentMethod}`
     );
 
-    // Register with E-Barimt for Store orders only
-    if (order.orderType === "Store" && ebarimtService.isServiceEnabled()) {
-      try {
-        // Generate unique order number if not exists
-        const orderNumber = `ORD-${order.id.toString().padStart(6, "0")}`;
-
-        // Update order with order number before E-Barimt registration
-        await prisma.order.update({
-          where: { id: order.id },
-          data: { orderNumber },
-        });
-
-        // Register with E-Barimt
-        const ebarimtResult = await ebarimtService.registerReceipt({
-          orderNumber,
-          customer: {
-            name: order.customer.name,
-            registrationNumber: order.customer.registrationNumber,
-          },
-          consumerNo: (order.customer as any).ebarimtConsumerNo || undefined,
-          items: order.orderItems.map((item) => ({
-            productName: item.product.nameMongolian,
-            barcode: item.product.barcode || undefined,
-            quantity: item.quantity,
-            unitPrice: parseFloat(item.unitPrice.toString()),
-            total: parseFloat(item.unitPrice.toString()) * item.quantity,
-          })),
-          subtotal: parseFloat(order.subtotalAmount?.toString() || "0"),
-          vat: parseFloat(order.vatAmount?.toString() || "0"),
-          total: parseFloat(order.totalAmount?.toString() || "0"),
-          paymentMethod: order.paymentMethod,
-        });
-
-        if (ebarimtResult.success && ebarimtResult.data) {
-          // Update order with E-Barimt information (do NOT persist lottery/qrData per legal requirement)
-          await prisma.order.update({
-            where: { id: order.id },
-            data: {
-              ebarimtId: ebarimtResult.data.id,
-              ebarimtBillId: ebarimtResult.data.billId,
-              ebarimtRegistered: true,
-              ebarimtDate: new Date(ebarimtResult.data.date),
-            },
-          });
-
-          logger.info(
-            `Order ${order.id} registered with E-Barimt. ДДТД: ${ebarimtResult.data.billId}, Lottery: ${ebarimtResult.data.lottery}`
-          );
-        } else {
-          logger.error(
-            `Failed to register order ${order.id} with E-Barimt: ${ebarimtResult.message}`
-          );
-          // Note: Order is still created even if E-Barimt registration fails
-          // Can be retried later using manual endpoint
-        }
-      } catch (error) {
-        logger.error(
-          `Error during E-Barimt registration for order ${order.id}:`,
-          error
-        );
-        // Continue - order is already created
-      }
-    }
+    // eBarimt registration is handled by the frontend (POS device at localhost:7080)
+    // Frontend will call PUT /api/orders/:id/ebarimt to save the result
 
     // Add subtotal to orderItems for frontend
     const orderWithSubtotals = {
@@ -578,6 +517,46 @@ export const updateOrderStatus = async (
     });
 
     logger.info(`Order ${id} status updated to: ${status}`);
+
+    res.json({
+      status: "success",
+      data: { order: updatedOrder },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateOrderEbarimt = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { ebarimtId, ebarimtBillId, ebarimtDate } = req.body;
+
+    const order = await prisma.order.findUnique({
+      where: { id: parseInt(id) },
+    });
+
+    if (!order) {
+      throw new AppError("Захиалга олдсонгүй", 404);
+    }
+
+    const updatedOrder = await prisma.order.update({
+      where: { id: parseInt(id) },
+      data: {
+        ebarimtId,
+        ebarimtBillId,
+        ebarimtRegistered: true,
+        ebarimtDate: ebarimtDate ? new Date(ebarimtDate) : new Date(),
+      },
+    });
+
+    logger.info(
+      `Order ${id} eBarimt info updated: ID=${ebarimtId}, BillID=${ebarimtBillId}`
+    );
 
     res.json({
       status: "success",

@@ -5,6 +5,7 @@ import {
   getAllOrders,
   getOrderById,
   updateOrderStatus,
+  updateOrderEbarimt,
   getOrderReceipt,
   prepareOrderDocument,
   getMarketOrders,
@@ -296,6 +297,62 @@ router.put(
       .withMessage("Status must be Pending, Fulfilled, or Cancelled"),
   ]),
   updateOrderStatus
+);
+
+/**
+ * @swagger
+ * /api/orders/{id}/ebarimt:
+ *   put:
+ *     summary: Update order eBarimt information
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Save eBarimt registration data from frontend POS device
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Order ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ebarimtId
+ *               - ebarimtBillId
+ *             properties:
+ *               ebarimtId:
+ *                 type: string
+ *               ebarimtBillId:
+ *                 type: string
+ *               ebarimtDate:
+ *                 type: string
+ *                 format: date-time
+ *     responses:
+ *       200:
+ *         description: eBarimt info updated successfully
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ */
+router.put(
+  "/:id/ebarimt",
+  checkRole([
+    "Admin",
+    "Manager",
+    "SalesAgent",
+    "MarketSalesperson",
+    "StoreSalesperson",
+  ]),
+  validate([
+    param("id").isInt().withMessage("Valid order ID is required"),
+    body("ebarimtId").isString().withMessage("ebarimtId is required"),
+    body("ebarimtBillId").isString().withMessage("ebarimtBillId is required"),
+  ]),
+  updateOrderEbarimt
 );
 
 /**
