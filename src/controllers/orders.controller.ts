@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import axios from "axios";
 import prisma from "../db/prisma";
 import { AppError } from "../middleware/error.middleware";
 import { AuthRequest } from "../middleware/auth.middleware";
@@ -119,41 +120,38 @@ export const createOrder = async (
           },
         });
 
-        // Check if we have enough inventory in non-expired batches
-        const totalBatchQuantity = batches.reduce(
-          (sum, batch) => sum + batch.quantity,
-          0
-        );
-
-        if (totalBatchQuantity < item.quantity) {
-          throw new AppError(
-            `${product.nameMongolian} барааны идэвхтэй багцын үлдэгдэл хүрэлцэхгүй. Үлдэгдэл: ${totalBatchQuantity}, Захиалсан: ${item.quantity}`,
-            400
+        // Check if we have enough inventory in non-expired batches (only if batches exist)
+        if (batches.length > 0) {
+          const totalBatchQuantity = batches.reduce(
+            (sum, batch) => sum + batch.quantity,
+            0
           );
-        }
 
-        // Allocate quantity from batches using FIFO
-        let remainingQuantity = item.quantity;
-        for (const batch of batches) {
-          if (remainingQuantity <= 0) break;
+          if (totalBatchQuantity < item.quantity) {
+            throw new AppError(
+              `${product.nameMongolian} барааны идэвхтэй багцын үлдэгдэл хүрэлцэхгүй. Үлдэгдэл: ${totalBatchQuantity}, Захиалсан: ${item.quantity}`,
+              400
+            );
+          }
 
-          const quantityToUse = Math.min(batch.quantity, remainingQuantity);
+          // Allocate quantity from batches using FIFO
+          let remainingQuantity = item.quantity;
+          for (const batch of batches) {
+            if (remainingQuantity <= 0) break;
 
-          // Update batch quantity
-          await tx.productBatch.update({
-            where: { id: batch.id },
-            data: {
-              quantity: {
-                decrement: quantityToUse,
-              },
-            },
-          });
+            const quantityToUse = Math.min(batch.quantity, remainingQuantity);
 
-          remainingQuantity -= quantityToUse;
+            await tx.productBatch.update({
+              where: { id: batch.id },
+              data: { quantity: { decrement: quantityToUse } },
+            });
 
-          logger.info(
-            `Allocated ${quantityToUse} units from batch ${batch.batchNumber} (Product: ${product.nameMongolian})`
-          );
+            remainingQuantity -= quantityToUse;
+
+            logger.info(
+              `Allocated ${quantityToUse} units from batch ${batch.batchNumber} (Product: ${product.nameMongolian})`
+            );
+          }
         }
 
         // Determine price independent of customer/org selection.
@@ -593,7 +591,6 @@ export const getOrderReceipt = async (
               select: {
                 id: true,
                 nameMongolian: true,
-                nameEnglish: true,
                 productCode: true,
                 barcode: true,
               },
@@ -830,7 +827,6 @@ export const getOrderReceiptPDF = async (
               select: {
                 id: true,
                 nameMongolian: true,
-                nameEnglish: true,
                 productCode: true,
                 barcode: true,
                 classificationCode: true,
@@ -1036,6 +1032,217 @@ export const getOrderReceiptPDF = async (
       stack: error instanceof Error ? error.stack : undefined,
       orderId: req.params.id,
     });
+    next(error);
+  }
+};
+
+// ── eBarimt шууд захиалга хадгалах (OrderForm2-оос дуудагдана) ──
+export const createEbarimtDirectOrder = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const authReq = req as AuthRequest;
+    const agentId = authReq.user!.userId;
+
+    const {
+      customerId,
+      items,
+      totalAmount,
+      paymentMethod: paymentMethodRaw = "Cash",
+      ebarimtBillId,
+      ebarimtDate,
+      ebarimtId,
+      customerName,
+    } = req.body;
+
+    // eBarimt payment code → Prisma PaymentMethod enum хөрвүүлэлт
+    const paymentMethodMap: Record<string, string> = {
+      CASH: "Cash",
+      BANK_TRANSFER: "BankTransfer",
+      PAYMENT_CARD: "BankTransfer",
+      Cash: "Cash",
+      BankTransfer: "BankTransfer",
+      Card: "BankTransfer",
+    };
+    const paymentMethod = paymentMethodMap[paymentMethodRaw] || "Cash";
+
+    if (!items || items.length === 0) {
+      throw new AppError("Бараа байхгүй байна", 400);
+    }
+    if (!ebarimtBillId) {
+      throw new AppError("ebarimtBillId заавал шаардлагатай", 400);
+    }
+
+    // customerId байхгүй бол анхны customer ашиглана
+    let resolvedCustomerId = Number(customerId);
+    if (!resolvedCustomerId || isNaN(resolvedCustomerId)) {
+      const firstCustomer = await prisma.customer.findFirst({ orderBy: { id: "asc" } });
+      if (!firstCustomer) throw new AppError("Харилцагч олдсонгүй", 404);
+      resolvedCustomerId = firstCustomer.id;
+    }
+
+    // agentId нь employees хүснэгтэд байгаа эсэхийг шалгана, байхгүй бол анхны employee ашиглана
+    let resolvedAgentId = agentId;
+    const agentExists = await prisma.employee.findUnique({ where: { id: agentId } });
+    if (!agentExists) {
+      const firstEmployee = await prisma.employee.findFirst({ orderBy: { id: "asc" } });
+      if (!firstEmployee) throw new AppError("Employee олдсонгүй", 404);
+      resolvedAgentId = firstEmployee.id;
+    }
+
+    const order = await prisma.$transaction(async (tx) => {
+      const newOrder = await tx.order.create({
+        data: {
+          customerId: resolvedCustomerId,
+          agentId: resolvedAgentId,
+          status: "Fulfilled",
+          paymentMethod: paymentMethod as any,
+          paymentStatus: "Paid",
+          paidAmount: new Prisma.Decimal(totalAmount || 0),
+          totalAmount: new Prisma.Decimal(totalAmount || 0),
+          subtotalAmount: new Prisma.Decimal(totalAmount || 0),
+          vatAmount: new Prisma.Decimal(0),
+          orderType: "Store",
+          ebarimtRegistered: true,
+          ebarimtBillId: ebarimtBillId || null,
+          ebarimtId: ebarimtId || null,
+          ebarimtDate: ebarimtDate ? new Date(ebarimtDate) : new Date(),
+          orderItems: {
+            create: items.map((item: { productId: number; quantity: number; unitPrice: number }) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+              unitPrice: new Prisma.Decimal(item.unitPrice),
+            })),
+          },
+        },
+        include: { customer: true, orderItems: { include: { product: true } } },
+      });
+      return newOrder;
+    });
+
+    logger.info(`eBarimt direct order created: ${order.id}, billId: ${ebarimtBillId}`);
+
+    res.status(201).json({
+      status: "success",
+      data: { order },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ── Existing order-д eBarimt мэдээлэл хадгалах (хүргэгдсэний дараа) ──
+export const markOrderEbarimt = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const orderId = parseInt(id);
+    const { ebarimtBillId, ebarimtDate, ebarimtId, ebarimtType } = req.body;
+
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new AppError("Захиалга олдсонгүй", 404);
+    if (order.ebarimtRegistered) throw new AppError("Энэ захиалганд eBarimt аль хэдийн бүртгэгдсэн байна", 400);
+
+    await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        ebarimtRegistered: true,
+        ebarimtBillId: ebarimtBillId || null,
+        ebarimtId: ebarimtId || null,
+        ebarimtDate: ebarimtDate ? new Date(ebarimtDate) : new Date(),
+        ebarimtType: ebarimtType || null,
+      },
+    });
+
+    logger.info(`Order ${orderId} marked as eBarimt registered, billId: ${ebarimtBillId}`);
+
+    res.json({ status: "success" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ── eBarimt буцаалт: frontend POS дуудлага хийсний дараа DB update хийнэ ──
+export const processEbarimtReturn = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const orderId = parseInt(id);
+
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new AppError("Захиалга олдсонгүй", 404);
+    if (!order.ebarimtBillId) throw new AppError("Энэ захиалганд eBarimt баримт байхгүй", 400);
+    if (order.ebarimtReturnId) throw new AppError("Энэ захиалга аль хэдийн буцаагдсан байна", 400);
+
+    // ebarimtId-д POS-ын оригинал date string хадгалагдсан байна
+    // ebarimtDate timezone буруу хөрвөх магадлалтай тул ebarimtId ашиглана
+    const ebarimtDate = order.ebarimtId ||
+      (order.ebarimtDate
+        ? (() => {
+            // Mongolia UTC+8 offset нэмж хөрвүүлнэ
+            const d = new Date(order.ebarimtDate!.getTime() + 8 * 60 * 60 * 1000);
+            return d.toISOString().replace("T", " ").slice(0, 19);
+          })()
+        : new Date().toISOString().replace("T", " ").slice(0, 19));
+
+    res.json({
+      status: "success",
+      data: {
+        ebarimtBillId: order.ebarimtBillId,
+        ebarimtDate,
+        orderId,
+      },
+    });
+  } catch (error: any) {
+    if (error?.response) {
+      logger.error("eBarimt return error", {
+        status: error.response.status,
+        data: error.response.data,
+      });
+      res.status(500).json({
+        status: "error",
+        message: `eBarimt API алдаа: ${error.response.data?.message || error.message}`,
+      });
+      return;
+    }
+    next(error);
+  }
+};
+
+// ── eBarimt буцаалт амжилттай болсны дараа DB дахь захиалгыг шинэчлэх ──
+export const markEbarimtReturned = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const orderId = parseInt(id);
+    const { returnId } = req.body;
+
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new AppError("Захиалга олдсонгүй", 404);
+
+    await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        ebarimtReturnId: returnId || order.ebarimtBillId,
+        status: "Cancelled",
+      },
+    });
+
+    logger.info(`Order ${orderId} marked as eBarimt returned`);
+
+    res.json({ status: "success" });
+  } catch (error) {
     next(error);
   }
 };

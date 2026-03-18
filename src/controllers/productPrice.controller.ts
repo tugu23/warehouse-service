@@ -25,7 +25,6 @@ export const getProductPrices = async (
           select: {
             id: true,
             nameMongolian: true,
-            nameEnglish: true,
           },
         },
       },
@@ -88,7 +87,6 @@ export const getAllPrices = async (
             select: {
               id: true,
               nameMongolian: true,
-              nameEnglish: true,
               productCode: true,
             },
           },

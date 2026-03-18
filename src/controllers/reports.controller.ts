@@ -133,16 +133,12 @@ export const getInventoryReport = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { categoryId, supplierId, lowStock } = req.query;
+    const { categoryId, lowStock } = req.query;
 
     const where: any = {};
 
     if (categoryId) {
       where.categoryId = parseInt(categoryId as string);
-    }
-
-    if (supplierId) {
-      where.supplierId = parseInt(supplierId as string);
     }
 
     if (lowStock === "true") {
@@ -158,12 +154,6 @@ export const getInventoryReport = async (
           select: {
             id: true,
             nameMongolian: true,
-          },
-        },
-        supplier: {
-          select: {
-            id: true,
-            name: true,
           },
         },
         batches: {
@@ -195,7 +185,6 @@ export const getInventoryReport = async (
         productCode: product.productCode,
         name: product.nameMongolian,
         category: product.category?.nameMongolian || "N/A",
-        supplier: product.supplier?.name || "N/A",
         stockQuantity: product.stockQuantity,
         priceWholesale: parseFloat(product.priceWholesale?.toString() || "0"),
         priceRetail: parseFloat(product.priceRetail?.toString() || "0"),
@@ -845,7 +834,7 @@ export const exportProductsToExcel = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { categoryId, supplierId } = req.query;
+    const { categoryId } = req.query;
 
     const where: any = {};
 
@@ -853,15 +842,10 @@ export const exportProductsToExcel = async (
       where.categoryId = parseInt(categoryId as string);
     }
 
-    if (supplierId) {
-      where.supplierId = parseInt(supplierId as string);
-    }
-
     const products = await prisma.product.findMany({
       where,
       include: {
         category: true,
-        supplier: true,
       },
       orderBy: { nameMongolian: "asc" },
     });
@@ -889,16 +873,12 @@ export const exportInventoryToExcel = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { categoryId, supplierId, lowStock } = req.query;
+    const { categoryId, lowStock } = req.query;
 
     const where: any = {};
 
     if (categoryId) {
       where.categoryId = parseInt(categoryId as string);
-    }
-
-    if (supplierId) {
-      where.supplierId = parseInt(supplierId as string);
     }
 
     if (lowStock === "true") {
@@ -914,12 +894,6 @@ export const exportInventoryToExcel = async (
           select: {
             id: true,
             nameMongolian: true,
-          },
-        },
-        supplier: {
-          select: {
-            id: true,
-            name: true,
           },
         },
         batches: {
@@ -951,7 +925,6 @@ export const exportInventoryToExcel = async (
         productCode: product.productCode,
         name: product.nameMongolian,
         category: product.category?.nameMongolian || "N/A",
-        supplier: product.supplier?.name || "N/A",
         stockQuantity: product.stockQuantity,
         priceWholesale: parseFloat(product.priceWholesale?.toString() || "0"),
         priceRetail: parseFloat(product.priceRetail?.toString() || "0"),

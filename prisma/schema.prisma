@@ -36,19 +36,9 @@ model Employee {
   @@map("employees")
 }
 
-model Supplier {
-  id          Int       @id @default(autoincrement())
-  name        String    @db.VarChar(255)
-  contactInfo String?   @map("contact_info")
-  products    Product[]
-
-  @@map("suppliers")
-}
-
 model Category {
   id            Int       @id @default(autoincrement())
   nameMongolian String    @map("name_mongolian") @db.VarChar(255)
-  nameEnglish   String?   @map("name_english") @db.VarChar(255)
   description   String?
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   products      Product[]
@@ -59,15 +49,12 @@ model Category {
 model Product {
   id                Int                     @id @default(autoincrement())
   nameMongolian     String                  @map("name_mongolian") @db.VarChar(255)
-  nameEnglish       String?                 @map("name_english") @db.VarChar(255)
   productCode       String?                 @unique @map("product_code") @db.VarChar(100)
-  supplierId        Int?                    @map("supplier_id")
   stockQuantity     Int                     @default(0) @map("stock_quantity")
   priceWholesale    Decimal?                @map("price_wholesale") @db.Decimal(10, 2)
   priceRetail       Decimal?                @map("price_retail") @db.Decimal(10, 2)
   createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
   categoryId        Int?                    @map("category_id")
-  nameKorean        String?                 @map("name_korean") @db.VarChar(255)
   barcode           String?                 @db.VarChar(100)
   unitsPerBox       Int?                    @map("units_per_box")
   pricePerBox       Decimal?                @map("price_per_box") @db.Decimal(10, 2)
@@ -84,7 +71,6 @@ model Product {
   salesAnalytics    ProductSalesAnalytics[]
   prices            ProductPrice[]
   category          Category?               @relation(fields: [categoryId], references: [id])
-  supplier          Supplier?               @relation(fields: [supplierId], references: [id])
   returns           Return[]
 
   @@map("products")
@@ -153,6 +139,7 @@ model Order {
   ebarimtRegistered Boolean       @default(false) @map("ebarimt_registered")
   ebarimtDate       DateTime?     @map("ebarimt_date") @db.Timestamptz(3)
   ebarimtReturnId   String?       @map("ebarimt_return_id") @db.VarChar(100)
+  ebarimtType       String?       @map("ebarimt_type") @db.VarChar(20)
   orderNumber       String?       @unique @map("order_number") @db.VarChar(50)
   orderItems        OrderItem[]
   agent             Employee      @relation("AgentOrders", fields: [agentId], references: [id])

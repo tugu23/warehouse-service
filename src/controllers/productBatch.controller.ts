@@ -32,7 +32,6 @@ export const getExpiringProducts = async (
         product: {
           include: {
             category: true,
-            supplier: true,
           },
         },
       },
@@ -78,7 +77,6 @@ export const getExpiredProducts = async (
         product: {
           include: {
             category: true,
-            supplier: true,
           },
         },
       },

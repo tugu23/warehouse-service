@@ -181,8 +181,6 @@ export class ExcelService {
       { header: "Код", key: "productCode", width: 15 },
       { header: "Баркод", key: "barcode", width: 15 },
       { header: "Монгол нэр", key: "nameMongolian", width: 30 },
-      { header: "Англи нэр", key: "nameEnglish", width: 30 },
-      { header: "Солонгос нэр", key: "nameKorean", width: 30 },
       { header: "Ангилал", key: "category", width: 20 },
       { header: "Үлдэгдэл", key: "stockQuantity", width: 12 },
       { header: "Хайрцаг дахь тоо", key: "unitsPerBox", width: 15 },
@@ -191,7 +189,6 @@ export class ExcelService {
       { header: "Хайрцагны үнэ", key: "pricePerBox", width: 15 },
       { header: "Цэвэр жин (кг)", key: "netWeight", width: 15 },
       { header: "Бохир жин (кг)", key: "grossWeight", width: 15 },
-      { header: "Нийлүүлэгч", key: "supplier", width: 25 },
     ];
 
     worksheet.getRow(1).font = { bold: true };
@@ -207,8 +204,6 @@ export class ExcelService {
         productCode: product.productCode || "N/A",
         barcode: product.barcode || "N/A",
         nameMongolian: product.nameMongolian,
-        nameEnglish: product.nameEnglish || "N/A",
-        nameKorean: product.nameKorean || "N/A",
         category: product.category?.nameMongolian || "N/A",
         stockQuantity: product.stockQuantity,
         unitsPerBox: product.unitsPerBox || "N/A",
@@ -217,7 +212,6 @@ export class ExcelService {
         pricePerBox: parseFloat(product.pricePerBox?.toString() || "0"),
         netWeight: parseFloat(product.netWeight?.toString() || "0"),
         grossWeight: parseFloat(product.grossWeight?.toString() || "0"),
-        supplier: product.supplier?.name || "N/A",
       });
     });
 
@@ -258,7 +252,6 @@ export class ExcelService {
       { header: "Код", key: "productCode", width: 15 },
       { header: "Нэр", key: "name", width: 30 },
       { header: "Ангилал", key: "category", width: 20 },
-      { header: "Нийлүүлэгч", key: "supplier", width: 25 },
       { header: "Үлдэгдэл", key: "stockQuantity", width: 12 },
       { header: "Бөөний үнэ", key: "priceWholesale", width: 15 },
       { header: "Үлдэгдлийн үнэ", key: "stockValue", width: 18 },
@@ -276,7 +269,6 @@ export class ExcelService {
         productCode: product.productCode || "N/A",
         name: product.name,
         category: product.category,
-        supplier: product.supplier,
         stockQuantity: product.stockQuantity,
         priceWholesale: product.priceWholesale,
         stockValue: product.stockValue,

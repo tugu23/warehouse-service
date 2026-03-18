@@ -9,13 +9,11 @@ export const createCategory = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { nameMongolian, nameEnglish, description } = req.body;
+    const { nameMongolian, description } = req.body;
 
     // Check if category already exists
     const existingCategory = await prisma.category.findFirst({
-      where: {
-        OR: [{ nameMongolian }, { nameEnglish: nameEnglish || undefined }],
-      },
+      where: { nameMongolian },
     });
 
     if (existingCategory) {
@@ -25,7 +23,6 @@ export const createCategory = async (
     const category = await prisma.category.create({
       data: {
         nameMongolian,
-        nameEnglish,
         description,
       },
     });
@@ -59,7 +56,6 @@ export const getAllCategories = async (
     if (search) {
       where.OR = [
         { nameMongolian: { contains: search, mode: "insensitive" } },
-        { nameEnglish: { contains: search, mode: "insensitive" } },
         { description: { contains: search, mode: "insensitive" } },
       ];
     }
@@ -74,7 +70,6 @@ export const getAllCategories = async (
             select: {
               id: true,
               nameMongolian: true,
-              nameEnglish: true,
             },
           },
         },
@@ -114,7 +109,6 @@ export const getCategoryById = async (
       include: {
         products: {
           include: {
-            supplier: true,
           },
         },
       },
@@ -140,7 +134,7 @@ export const updateCategory = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const { nameMongolian, nameEnglish, description } = req.body;
+    const { nameMongolian, description } = req.body;
 
     const category = await prisma.category.findUnique({
       where: { id: parseInt(id) },
@@ -151,19 +145,12 @@ export const updateCategory = async (
     }
 
     // Check if new name already exists
-    if (nameMongolian || nameEnglish) {
+    if (nameMongolian) {
       const existingCategory = await prisma.category.findFirst({
         where: {
           AND: [
             { id: { not: parseInt(id) } },
-            {
-              OR: [
-                { nameMongolian: nameMongolian || category.nameMongolian },
-                {
-                  nameEnglish: nameEnglish || category.nameEnglish || undefined,
-                },
-              ],
-            },
+            { nameMongolian: nameMongolian || category.nameMongolian },
           ],
         },
       });
@@ -177,7 +164,6 @@ export const updateCategory = async (
       where: { id: parseInt(id) },
       data: {
         nameMongolian,
-        nameEnglish,
         description,
       },
     });

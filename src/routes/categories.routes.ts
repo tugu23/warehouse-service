@@ -32,7 +32,6 @@ const router = Router();
  *         nameMongolian:
  *           type: string
  *           example: Ундаа
- *         nameEnglish:
  *           type: string
  *           example: Beverages
  *         description:
@@ -67,7 +66,6 @@ router.use(authMiddleware);
  *               nameMongolian:
  *                 type: string
  *                 example: Хүнсний бүтээгдэхүүн
- *               nameEnglish:
  *                 type: string
  *                 example: Food Products
  *               description:
@@ -101,7 +99,6 @@ router.post(
       .notEmpty()
       .withMessage("Mongolian name is required")
       .isString(),
-    body("nameEnglish").optional().isString(),
     body("description").optional().isString(),
   ]),
   createCategory
@@ -230,7 +227,6 @@ router.get(
  *             properties:
  *               nameMongolian:
  *                 type: string
- *               nameEnglish:
  *                 type: string
  *               description:
  *                 type: string
@@ -246,7 +242,6 @@ router.put(
   validate([
     param("id").isInt().withMessage("Valid category ID is required"),
     body("nameMongolian").optional().notEmpty().isString(),
-    body("nameEnglish").optional().isString(),
     body("description").optional().isString(),
   ]),
   updateCategory
