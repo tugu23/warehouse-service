@@ -63,7 +63,8 @@ services:
       - ./logs:/app/logs
       # Prevent overwriting node_modules
       - /app/node_modules
-    command: npm run dev
+    # Apply migrations + regenerate client from mounted prisma/ (avoids stale Prisma client vs DB)
+    command: sh -c "npx prisma migrate deploy && npx prisma generate && npm run dev"
 
   # Prisma Studio (Database GUI)
   prisma-studio:

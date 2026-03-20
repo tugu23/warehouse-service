@@ -32,8 +32,6 @@ const router = Router();
  *         nameMongolian:
  *           type: string
  *           example: Ундаа
- *           type: string
- *           example: Beverages
  *         description:
  *           type: string
  *           example: All types of beverages and drinks
@@ -66,8 +64,6 @@ router.use(authMiddleware);
  *               nameMongolian:
  *                 type: string
  *                 example: Хүнсний бүтээгдэхүүн
- *                 type: string
- *                 example: Food Products
  *               description:
  *                 type: string
  *                 example: All food and grocery items
@@ -226,7 +222,6 @@ router.get(
  *             type: object
  *             properties:
  *               nameMongolian:
- *                 type: string
  *                 type: string
  *               description:
  *                 type: string
