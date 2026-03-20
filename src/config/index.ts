@@ -40,4 +40,6 @@ export const config = {
     gracePeriodDays: parseInt(process.env.CREDIT_GRACE_PERIOD_DAYS || "3", 10),
     maxTermDays: parseInt(process.env.MAX_CREDIT_TERM_DAYS || "90", 10),
   },
+  /** IANA timezone for KPI bucketing (Order.orderDate → local calendar day/month/year) */
+  appTimezone: process.env.APP_TIMEZONE || "Asia/Ulaanbaatar",
 };

@@ -30,6 +30,7 @@ import customerTypesRoutes from "./routes/customerTypes.routes";
 import etaxRoutes from "./routes/etax.routes";
 import ebarimtRoutes from "./routes/ebarimt.routes";
 import bunaRoutes from "./routes/buna.routes";
+import agentKpiRoutes from "./routes/agent-kpi.routes";
 
 const app: Application = express();
 
@@ -140,6 +141,7 @@ app.use("/api/customer-types", customerTypesRoutes);
 app.use("/api/etax", etaxRoutes);
 app.use("/api/ebarimt", ebarimtRoutes);
 app.use("/api/buna", bunaRoutes);
+app.use("/api/agent-kpi", agentKpiRoutes);
 
 // 404 handler
 app.use(notFoundHandler);

@@ -31,7 +31,8 @@ model Employee {
   deliveryPlans DeliveryPlan[]
   role          Role            @relation(fields: [roleId], references: [id])
   store         Store?          @relation(fields: [storeId], references: [id])
-  orders        Order[]         @relation("AgentOrders")
+  orders            Order[]             @relation("AgentOrders")
+  agentSalesTargets AgentSalesTarget[]
 
   @@map("employees")
 }
@@ -338,6 +339,27 @@ enum StoreType {
 enum OrderType {
   Market
   Store
+}
+
+enum AgentSalesTargetPeriodType {
+  DAY
+  MONTH
+  YEAR
+}
+
+model AgentSalesTarget {
+  id            Int                        @id @default(autoincrement())
+  employeeId    Int                        @map("employee_id")
+  periodType    AgentSalesTargetPeriodType @map("period_type")
+  periodStart   DateTime                   @map("period_start") @db.Date
+  targetAmount  Decimal                    @map("target_amount") @db.Decimal(14, 2)
+  targetBoxQty  Decimal?                   @map("target_box_qty") @db.Decimal(14, 2)
+  createdAt     DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  employee      Employee                   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, periodType, periodStart])
+  @@map("agent_sales_targets")
 }
 
 model ProductPrice {
