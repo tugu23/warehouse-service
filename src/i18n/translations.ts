@@ -50,10 +50,12 @@ export interface Translations {
   };
   returns: {
     created: string;
+    deleted: string;
     notFound: string;
     orderNotFound: string;
     productNotInOrder: string;
     invalidQuantity: string;
+    cannotDeleteInsufficientStock: string;
     listRetrieved: string;
   };
   categories: {
@@ -174,10 +176,13 @@ export const mn: Translations = {
   },
   returns: {
     created: 'Буцаалт амжилттай бүртгэгдлээ',
+    deleted: 'Буцаалт устгагдлаа',
     notFound: 'Буцаалт олдсонгүй',
     orderNotFound: 'Захиалга олдсонгүй',
     productNotInOrder: 'Энэ бараа захиалгад байхгүй байна',
     invalidQuantity: 'Буцаах тоо ширхэг захиалсан тоо ширхгээс их байж болохгүй',
+    cannotDeleteInsufficientStock:
+      'Одоогийн үлдэгдэл буцаалтын тоо ширхгээс бага тул устгах боломжгүй. Эхлээд нөөцийг засна уу.',
     listRetrieved: 'Буцаалтын жагсаалт',
   },
   categories: {
@@ -298,10 +303,13 @@ export const en: Translations = {
   },
   returns: {
     created: 'Return created successfully',
+    deleted: 'Return deleted successfully',
     notFound: 'Return not found',
     orderNotFound: 'Order not found',
     productNotInOrder: 'Product not found in this order',
     invalidQuantity: 'Return quantity cannot exceed ordered quantity',
+    cannotDeleteInsufficientStock:
+      'Cannot delete return: current stock is less than the returned quantity. Adjust inventory first.',
     listRetrieved: 'Returns list retrieved',
   },
   categories: {

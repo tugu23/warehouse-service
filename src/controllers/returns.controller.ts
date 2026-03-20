@@ -180,3 +180,54 @@ export const getReturnById = async (
     next(error);
   }
 };
+
+/** Remove a return and reverse the stock increment from when it was created */
+export const deleteReturn = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id, 10);
+
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.return.findUnique({
+        where: { id },
+      });
+
+      if (!existing) {
+        throw new AppError(req.t.returns.notFound, 404);
+      }
+
+      const product = await tx.product.findUnique({
+        where: { id: existing.productId },
+      });
+
+      if (!product) {
+        throw new AppError(req.t.products.notFound, 404);
+      }
+
+      if (product.stockQuantity < existing.quantity) {
+        throw new AppError(req.t.returns.cannotDeleteInsufficientStock, 400);
+      }
+
+      await tx.product.update({
+        where: { id: existing.productId },
+        data: {
+          stockQuantity: { decrement: existing.quantity },
+        },
+      });
+
+      await tx.return.delete({ where: { id } });
+    });
+
+    logger.info(`Return deleted: ID ${id}`);
+
+    res.json({
+      status: "success",
+      message: req.t.returns.deleted,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

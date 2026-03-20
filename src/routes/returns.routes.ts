@@ -2,6 +2,7 @@ import { Router } from "express";
 import { body, param } from "express-validator";
 import {
   createReturn,
+  deleteReturn,
   getAllReturns,
   getReturnById,
 } from "../controllers/returns.controller";
@@ -195,6 +196,22 @@ router.get(
   "/:id",
   validate([param("id").isInt().withMessage("Valid return ID is required")]),
   getReturnById
+);
+
+/**
+ * @swagger
+ * /api/returns/{id}:
+ *   delete:
+ *     summary: Delete a product return
+ *     tags: [Returns]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Deletes the return and decrements product stock by the returned quantity (reverses create)
+ */
+router.delete(
+  "/:id",
+  validate([param("id").isInt().withMessage("Valid return ID is required")]),
+  deleteReturn
 );
 
 export default router;
