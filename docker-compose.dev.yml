@@ -1,3 +1,6 @@
+# Dev stack: API is reachable on the host as http://localhost:${API_PORT:-4000}
+# (container listens on 3000; host maps 4000→3000 by default).
+# From another container on warehouse-network-dev: http://backend-dev:3000/health
 version: "3.8"
 
 services:
@@ -54,6 +57,19 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      # Uses /health/ready so the service is "healthy" only when Postgres is reachable via Prisma
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://127.0.0.1:3000/health/ready',(r)=>{r.resume();r.on('end',()=>process.exit(r.statusCode===200?0:1))}).on('error',()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
     networks:
       - warehouse-network-dev
     volumes:
