@@ -11,10 +11,6 @@ import {
   getMarketOrders,
   getStoreOrders,
   getOrderReceiptPDF,
-  createEbarimtDirectOrder,
-  processEbarimtReturn,
-  markEbarimtReturned,
-  markOrderEbarimt,
 } from "../controllers/orders.controller";
 import { authMiddleware, checkRole } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validation.middleware";
@@ -490,43 +486,5 @@ router.get("/market", getMarketOrders);
  *         $ref: '#/components/responses/Unauthorized'
  */
 router.get("/store", getStoreOrders);
-
-// eBarimt шууд захиалга хадгалах
-router.post(
-  "/ebarimt-direct",
-  checkRole(["Admin", "Manager", "SalesAgent", "MarketSalesperson", "StoreSalesperson"]),
-  validate([
-    body("ebarimtBillId").isString().withMessage("ebarimtBillId заавал шаардлагатай"),
-    body("items").isArray({ min: 1 }).withMessage("Бараа байхгүй байна"),
-  ]),
-  createEbarimtDirectOrder
-);
-
-// Existing захиалганд eBarimt мэдээлэл хадгалах (хүргэгдсэний дараа хэвлэнэ)
-router.post(
-  "/:id/mark-ebarimt",
-  checkRole(["Admin", "Manager", "SalesAgent", "MarketSalesperson", "StoreSalesperson"]),
-  validate([
-    param("id").isInt().withMessage("Valid order ID is required"),
-    body("ebarimtBillId").isString().withMessage("ebarimtBillId шаардлагатай"),
-  ]),
-  markOrderEbarimt
-);
-
-// eBarimt буцаалтын мэдээлэл авах (frontend POS дуудлага хийхэд хэрэглэнэ)
-router.post(
-  "/:id/ebarimt-return",
-  checkRole(["Admin", "Manager", "SalesAgent", "MarketSalesperson", "StoreSalesperson"]),
-  validate([param("id").isInt().withMessage("Valid order ID is required")]),
-  processEbarimtReturn
-);
-
-// eBarimt буцаалт амжилттай болсны дараа DB шинэчлэх
-router.post(
-  "/:id/ebarimt-return-done",
-  checkRole(["Admin", "Manager", "SalesAgent", "MarketSalesperson", "StoreSalesperson"]),
-  validate([param("id").isInt().withMessage("Valid order ID is required")]),
-  markEbarimtReturned
-);
 
 export default router;

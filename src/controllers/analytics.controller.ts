@@ -41,6 +41,7 @@ export const calculateProductSalesAnalytics = async (
           select: {
             id: true,
             nameMongolian: true,
+            nameEnglish: true,
             productCode: true,
           },
         },
@@ -150,6 +151,7 @@ export const getAllProductsSalesAnalytics = async (
           select: {
             id: true,
             nameMongolian: true,
+            nameEnglish: true,
             productCode: true,
             stockQuantity: true,
           },
@@ -223,6 +225,7 @@ export const getProductSalesAnalytics = async (
           select: {
             id: true,
             nameMongolian: true,
+            nameEnglish: true,
             productCode: true,
           },
         },
@@ -236,6 +239,7 @@ export const getProductSalesAnalytics = async (
       select: {
         id: true,
         nameMongolian: true,
+        nameEnglish: true,
         productCode: true,
         stockQuantity: true,
       },
@@ -306,6 +310,7 @@ export const generateInventoryForecast = async (
           select: {
             id: true,
             nameMongolian: true,
+            nameEnglish: true,
             productCode: true,
             stockQuantity: true,
           },
@@ -443,6 +448,7 @@ export const getInventoryForecasts = async (
             select: {
               id: true,
               nameMongolian: true,
+              nameEnglish: true,
               productCode: true,
               stockQuantity: true,
             },

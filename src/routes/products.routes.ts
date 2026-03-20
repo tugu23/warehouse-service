@@ -33,6 +33,9 @@ const router = Router();
  *         nameMongolian:
  *           type: string
  *           example: Ус
+ *         nameEnglish:
+ *           type: string
+ *           example: Water
  *         productCode:
  *           type: string
  *           example: PROD-001
@@ -82,6 +85,9 @@ router.use(authMiddleware);
  *               nameMongolian:
  *                 type: string
  *                 example: Сүү
+ *               nameEnglish:
+ *                 type: string
+ *                 example: Milk
  *               productCode:
  *                 type: string
  *                 example: PROD-004
@@ -125,6 +131,7 @@ router.post(
   checkRole(["Admin", "Manager", "SalesAgent"]),
   validate([
     body("nameMongolian").notEmpty().withMessage("Mongolian name is required"),
+    body("nameEnglish").optional().isString(),
     body("productCode").optional().isString(),
     body("supplierId").optional().isInt(),
     body("categoryId").optional().isInt(),
@@ -292,6 +299,8 @@ router.get(
  *             properties:
  *               nameMongolian:
  *                 type: string
+ *               nameEnglish:
+ *                 type: string
  *               productCode:
  *                 type: string
  *               supplierId:
@@ -314,6 +323,7 @@ router.put(
   validate([
     param("id").isInt().withMessage("Valid product ID is required"),
     body("nameMongolian").optional().notEmpty(),
+    body("nameEnglish").optional().isString(),
     body("productCode").optional().isString(),
     body("supplierId").optional().isInt(),
     body("categoryId").optional().isInt(),

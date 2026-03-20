@@ -64,6 +64,7 @@ export const syncProductToPosApi = async (
       where: { id: parseInt(id) },
       include: {
         category: true,
+        supplier: true,
       },
     });
 

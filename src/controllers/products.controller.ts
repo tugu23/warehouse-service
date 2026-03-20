@@ -12,9 +12,11 @@ export const createProduct = async (
   try {
     const {
       nameMongolian,
+      nameEnglish,
+      nameKorean,
       productCode,
       barcode,
-      classificationCode,
+      supplierId,
       categoryId,
       stockQuantity,
       unitsPerBox,
@@ -43,9 +45,11 @@ export const createProduct = async (
     const product = await prisma.product.create({
       data: {
         nameMongolian,
+        nameEnglish,
+        nameKorean,
         productCode,
         barcode,
-        classificationCode,
+        supplierId,
         categoryId,
         stockQuantity: stockQuantity || 0,
         unitsPerBox,
@@ -57,6 +61,7 @@ export const createProduct = async (
         isActive: isActive !== undefined ? isActive : true,
       },
       include: {
+        supplier: true,
         category: true,
       },
     });
@@ -89,15 +94,17 @@ export const getAllProducts = async (
 
     const search = req.query.search as string;
     
-    // Parse include query parameter: ?include=batches,prices,category
+    // Parse include query parameter: ?include=batches,prices,supplier,category
     const includeParam = req.query.include as string;
-    const includeFields = includeParam ? includeParam.split(',') : ['category', 'batches', 'prices'];
+    const includeFields = includeParam ? includeParam.split(',') : ['supplier', 'category', 'batches', 'prices'];
 
     const where: any = {};
 
     if (search) {
       where.OR = [
         { nameMongolian: { contains: search, mode: "insensitive" } },
+        { nameEnglish: { contains: search, mode: "insensitive" } },
+        { nameKorean: { contains: search, mode: "insensitive" } },
         { productCode: { contains: search, mode: "insensitive" } },
         { barcode: { contains: search, mode: "insensitive" } },
       ];
@@ -105,6 +112,10 @@ export const getAllProducts = async (
 
     // Build dynamic include object based on query parameters
     const include: any = {};
+    
+    if (includeFields.includes('supplier')) {
+      include.supplier = true;
+    }
     
     if (includeFields.includes('category')) {
       include.category = true;
@@ -172,6 +183,7 @@ export const getProductById = async (
     const product = await prisma.product.findUnique({
       where: { id: parseInt(id) },
       include: {
+        supplier: true,
         category: true,
         batches: {
           where: {
@@ -214,9 +226,11 @@ export const updateProduct = async (
     const { id } = req.params;
     const {
       nameMongolian,
+      nameEnglish,
+      nameKorean,
       productCode,
       barcode,
-      classificationCode,
+      supplierId,
       categoryId,
       unitsPerBox,
       priceWholesale,
@@ -253,9 +267,11 @@ export const updateProduct = async (
       where: { id: parseInt(id) },
       data: {
         nameMongolian,
+        nameEnglish,
+        nameKorean,
         productCode,
         barcode,
-        classificationCode,
+        supplierId,
         categoryId,
         unitsPerBox,
         priceWholesale,
@@ -266,6 +282,7 @@ export const updateProduct = async (
         isActive,
       },
       include: {
+        supplier: true,
         category: true,
       },
     });
@@ -340,6 +357,7 @@ export const getProductByBarcode = async (
     const products = await prisma.product.findMany({
       where: { barcode },
       include: {
+        supplier: true,
         category: true,
         batches: {
           where: {
@@ -356,11 +374,7 @@ export const getProductByBarcode = async (
     });
 
     if (!products || products.length === 0) {
-      res.json({
-        status: "success",
-        data: { product: null },
-      });
-      return;
+      throw new AppError(req.t.products.notFound, 404);
     }
 
     logger.info(`Product(s) scanned by barcode: ${barcode}, found: ${products.length}`);
