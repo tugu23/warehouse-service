@@ -8,7 +8,6 @@ import { swaggerSpec } from "./config/swagger";
 import logger from "./utils/logger";
 import { errorHandler, notFoundHandler } from "./middleware/error.middleware";
 import { languageMiddleware } from "./middleware/language.middleware";
-import prisma from "./db/prisma";
 
 // Import routes
 import authRoutes from "./routes/auth.routes";
@@ -100,33 +99,13 @@ if (process.env.NODE_ENV !== "test") {
   app.use("/api/auth/login", loginLimiter);
 }
 
-// Liveness — process is up (no DB; safe for frequent probes)
+// Health check endpoint
 app.get("/health", (req, res) => {
   res.json({
     status: "success",
     message: "Server is running",
     timestamp: new Date().toISOString(),
   });
-});
-
-// Readiness — database reachable (use for deploy / load balancer checks)
-app.get("/health/ready", async (req, res) => {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    res.json({
-      status: "success",
-      message: "Ready",
-      checks: { database: "ok" },
-      timestamp: new Date().toISOString(),
-    });
-  } catch {
-    res.status(503).json({
-      status: "error",
-      message: "Database unavailable",
-      checks: { database: "error" },
-      timestamp: new Date().toISOString(),
-    });
-  }
 });
 
 // API Documentation

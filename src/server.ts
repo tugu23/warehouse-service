@@ -46,8 +46,7 @@ const startServer = async () => {
       logger.info(
         `Server is running on port ${PORT} in ${config.nodeEnv} mode`
       );
-      logger.info(`Health (liveness): http://localhost:${PORT}/health`);
-      logger.info(`Health (readiness + DB): http://localhost:${PORT}/health/ready`);
+      logger.info(`Health check: http://localhost:${PORT}/health`);
       logger.info("eBarimt scheduler active: daily send, lottery check, auto-register");
     });
   } catch (error) {
