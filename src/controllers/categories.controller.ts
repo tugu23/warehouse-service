@@ -9,7 +9,7 @@ export const createCategory = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { nameMongolian, nameEnglish, description } = req.body;
+    const { nameMongolian, nameEnglish, description, classificationCode } = req.body;
 
     // Check if category already exists
     const existingCategory = await prisma.category.findFirst({
@@ -26,6 +26,7 @@ export const createCategory = async (
       data: {
         nameMongolian,
         description,
+        classificationCode: classificationCode || null,
       },
     });
 
@@ -137,7 +138,7 @@ export const updateCategory = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const { nameMongolian, nameEnglish, description } = req.body;
+    const { nameMongolian, nameEnglish, description, classificationCode } = req.body;
 
     const category = await prisma.category.findUnique({
       where: { id: parseInt(id) },
@@ -172,6 +173,9 @@ export const updateCategory = async (
       data: {
         nameMongolian,
         description,
+        ...(classificationCode !== undefined && {
+          classificationCode: classificationCode || null,
+        }),
       },
     });
 

@@ -21,7 +21,6 @@ import ordersRoutes from "./routes/orders.routes";
 import agentsRoutes from "./routes/agents.routes";
 import categoriesRoutes from "./routes/categories.routes";
 import paymentsRoutes from "./routes/payments.routes";
-import productBatchesRoutes from "./routes/product-batches.routes";
 import deliveryPlansRoutes from "./routes/delivery-plans.routes";
 import reportsRoutes from "./routes/reports.routes";
 import posapiRoutes from "./routes/posapi.routes";
@@ -158,7 +157,6 @@ app.use("/api/prices", productPriceRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/employees", employeesRoutes);
 app.use("/api/products", productsRoutes);
-app.use("/api/products", productBatchesRoutes); // Product batch routes nested under products
 app.use("/api/customers", customersRoutes);
 app.use("/api/orders", ordersRoutes);
 app.use("/api/agents", agentsRoutes);

@@ -94,10 +94,6 @@ export const getAllProducts = async (
 
     const search = req.query.search as string;
     
-    // Parse include query parameter: ?include=batches,prices,supplier,category
-    const includeParam = req.query.include as string;
-    const includeFields = includeParam ? includeParam.split(',') : ['supplier', 'category', 'batches', 'prices'];
-
     const where: any = {};
 
     if (search) {
@@ -110,39 +106,17 @@ export const getAllProducts = async (
       ];
     }
 
-    // Build dynamic include object based on query parameters
-    const include: any = {};
-    
-    if (includeFields.includes('supplier')) {
-      include.supplier = true;
-    }
-    
-    if (includeFields.includes('category')) {
-      include.category = true;
-    }
-    
-    if (includeFields.includes('batches')) {
-      include.batches = {
-        where: {
-          isActive: true,
-        },
-        orderBy: {
-          expiryDate: "asc" as const,
-        },
-        take: 5, // Show only the first 5 batches
-      };
-    }
-    
-    if (includeFields.includes('prices')) {
-      include.prices = {
+    const include: any = {
+      category: true,
+      prices: {
         include: {
           customerType: true,
         },
         orderBy: {
           customerTypeId: "asc" as const,
         },
-      };
-    }
+      },
+    };
 
     const [products, total] = await Promise.all([
       prisma.product.findMany({
@@ -183,16 +157,7 @@ export const getProductById = async (
     const product = await prisma.product.findUnique({
       where: { id: parseInt(id) },
       include: {
-        
         category: true,
-        batches: {
-          where: {
-            isActive: true,
-          },
-          orderBy: {
-            expiryDate: "asc",
-          },
-        },
         prices: {
           include: {
             customerType: true,
@@ -357,19 +322,7 @@ export const getProductByBarcode = async (
     const products = await prisma.product.findMany({
       where: { barcode },
       include: {
-        //supplier: true,
         category: true,
-        batches: {
-          where: {
-            isActive: true,
-            quantity: {
-              gt: 0,
-            },
-          },
-          orderBy: {
-            expiryDate: "asc",
-          },
-        },
       },
     });
 

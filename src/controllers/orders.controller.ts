@@ -101,51 +101,6 @@ export const createOrder = async (
           );
         }
 
-        // Get active batches using FIFO logic (oldest first, non-expired)
-        const batches = await tx.productBatch.findMany({
-          where: {
-            productId: item.productId,
-            isActive: true,
-            quantity: {
-              gt: 0,
-            },
-            OR: [
-              { expiryDate: null },
-              { expiryDate: { gt: new Date() } }, // Not expired
-            ],
-          },
-          orderBy: {
-            arrivalDate: "asc", // FIFO - oldest first
-          },
-        });
-
-        // Allocate from active batches using FIFO.
-        // If batch stock is short, continue using product-level stock (validated above).
-        // This keeps sales flowing even when batch data is incomplete.
-        // Allocate quantity from batches using FIFO
-        let remainingQuantity = item.quantity;
-        for (const batch of batches) {
-          if (remainingQuantity <= 0) break;
-
-          const quantityToUse = Math.min(batch.quantity, remainingQuantity);
-
-          // Update batch quantity
-          await tx.productBatch.update({
-            where: { id: batch.id },
-            data: {
-              quantity: {
-                decrement: quantityToUse,
-              },
-            },
-          });
-
-          remainingQuantity -= quantityToUse;
-
-          logger.info(
-            `Allocated ${quantityToUse} units from batch ${batch.batchNumber} (Product: ${product.nameMongolian})`
-          );
-        }
-
         // Determine price independent of customer/org selection.
         // Market orders use wholesale; Store orders use retail.
         let unitPrice: Prisma.Decimal | null =
@@ -965,6 +920,11 @@ export const getOrderReceiptPDF = async (
                 productCode: true,
                 barcode: true,
                 classificationCode: true,
+                category: {
+                  select: {
+                    classificationCode: true,
+                  },
+                },
               },
             },
           },
@@ -1033,7 +993,7 @@ export const getOrderReceiptPDF = async (
         items: order.orderItems.map((item) => ({
           productName: item.product.nameMongolian,
           barcode: item.product.barcode || undefined,
-          classificationCode: item.product.classificationCode || undefined,
+          classificationCode: item.product.classificationCode || (item.product as any).category?.classificationCode || undefined,
           quantity: item.quantity,
           unitPrice: parseFloat(item.unitPrice.toString()),
           total: parseFloat(item.unitPrice.toString()) * item.quantity,

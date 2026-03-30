@@ -1152,6 +1152,7 @@ class EBarimtService {
         barcode?: string | null;
         classificationCode?: string | null;
         vatType?: string | null;
+        category?: { classificationCode?: string | null } | null;
       };
       quantity: number;
       unitPrice: number | { toNumber?: () => number };
@@ -1232,7 +1233,7 @@ class EBarimtService {
         return {
           productName: item.product.nameMongolian,
           barcode: item.product.barcode || undefined,
-          classificationCode: item.product.classificationCode || undefined,
+          classificationCode: item.product.classificationCode || item.product.category?.classificationCode || undefined,
           quantity: item.quantity,
           unitPrice,
           total: itemTotal,

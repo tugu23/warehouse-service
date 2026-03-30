@@ -14,10 +14,9 @@ export const createReturn = async (
       productId, 
       quantity, 
       reason, 
-      customerId,      // NEW
-      unitPrice,       // NEW
-      expiryDate,      // NEW
-      notes            // NEW
+      customerId,
+      unitPrice,
+      notes
     } = req.body;
 
     // Use transaction to ensure data consistency
@@ -60,7 +59,6 @@ export const createReturn = async (
           reason,
           customerId: customerId || null,
           unitPrice: unitPrice || null,
-          expiryDate: expiryDate ? new Date(expiryDate) : null,
           notes: notes || null,
         },
         include: {

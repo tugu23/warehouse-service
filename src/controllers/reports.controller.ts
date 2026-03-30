@@ -166,14 +166,6 @@ export const getInventoryReport = async (
             name: true,
           },
         },
-        batches: {
-          where: {
-            isActive: true,
-          },
-          orderBy: {
-            expiryDate: "asc",
-          },
-        },
       },
       orderBy: {
         nameMongolian: "asc",
@@ -202,18 +194,6 @@ export const getInventoryReport = async (
         stockValue:
           product.stockQuantity *
           parseFloat(product.priceWholesale?.toString() || "0"),
-        batches: product.batches.map((batch) => ({
-          batchNumber: batch.batchNumber,
-          quantity: batch.quantity,
-          arrivalDate: batch.arrivalDate,
-          expiryDate: batch.expiryDate,
-          daysUntilExpiry: batch.expiryDate
-            ? Math.ceil(
-                (batch.expiryDate.getTime() - new Date().getTime()) /
-                  (1000 * 60 * 60 * 24)
-              )
-            : null,
-        })),
       })),
     };
 
@@ -922,14 +902,6 @@ export const exportInventoryToExcel = async (
             name: true,
           },
         },
-        batches: {
-          where: {
-            isActive: true,
-          },
-          orderBy: {
-            expiryDate: "asc",
-          },
-        },
       },
       orderBy: {
         nameMongolian: "asc",
@@ -958,7 +930,6 @@ export const exportInventoryToExcel = async (
         stockValue:
           product.stockQuantity *
           parseFloat(product.priceWholesale?.toString() || "0"),
-        batches: product.batches,
       })),
     };
 

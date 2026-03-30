@@ -47,12 +47,13 @@ model Supplier {
 }
 
 model Category {
-  id            Int       @id @default(autoincrement())
-  nameMongolian String    @map("name_mongolian") @db.VarChar(255)
-  nameEnglish   String?   @map("name_english") @db.VarChar(255)
-  description   String?
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  products      Product[]
+  id                 Int       @id @default(autoincrement())
+  nameMongolian      String    @map("name_mongolian") @db.VarChar(255)
+  nameEnglish        String?   @map("name_english") @db.VarChar(255)
+  description        String?
+  classificationCode String?   @map("classification_code") @db.VarChar(20)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  products           Product[]
 
   @@map("categories")
 }
@@ -81,7 +82,6 @@ model Product {
   inventoryBalances InventoryBalance[]
   forecasts         InventoryForecast[]
   orderItems        OrderItem[]
-  batches           ProductBatch[]
   salesAnalytics    ProductSalesAnalytics[]
   prices            ProductPrice[]
   category          Category?               @relation(fields: [categoryId], references: [id])
@@ -185,7 +185,6 @@ model Return {
   unitPrice   Decimal?  @map("unit_price") @db.Decimal(10, 2)
   reason      String?
   returnDate  DateTime  @default(now()) @map("return_date") @db.Timestamptz(3)
-  expiryDate  DateTime? @map("expiry_date") @db.Timestamptz(3)
   notes       String?
   order       Order?    @relation(fields: [orderId], references: [id])
   product     Product   @relation(fields: [productId], references: [id])
@@ -217,22 +216,6 @@ model Payment {
   @@map("payments")
 }
 
-model ProductBatch {
-  id              Int       @id @default(autoincrement())
-  productId       Int       @map("product_id")
-  batchNumber     String    @map("batch_number") @db.VarChar(100)
-  arrivalDate     DateTime  @map("arrival_date") @db.Timestamptz(3)
-  expiryDate      DateTime? @map("expiry_date") @db.Timestamptz(3)
-  quantity        Int
-  costPrice       Decimal?  @map("cost_price") @db.Decimal(10, 2)
-  supplierInvoice String?   @map("supplier_invoice") @db.VarChar(255)
-  isActive        Boolean   @default(true) @map("is_active")
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@unique([productId, batchNumber])
-  @@map("product_batches")
-}
 
 model InventoryBalance {
   id             Int      @id @default(autoincrement())
