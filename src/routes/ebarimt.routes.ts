@@ -133,6 +133,48 @@ router.post(
   }
 );
 
+/**
+ * @swagger
+ * /api/ebarimt/send-data/manual:
+ *   post:
+ *     summary: Manually trigger send-data (same as /send-data)
+ *     tags: [E-Barimt]
+ *     security:
+ *       - bearerAuth: []
+ *     description: |
+ *       Manual trigger endpoint for UI buttons or admin actions.
+ *     responses:
+ *       200:
+ *         description: Data sent successfully
+ */
+router.post(
+  "/send-data/manual",
+  checkRole(["Admin", "Manager"]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await ebarimtService.sendData();
+
+      if (result.success) {
+        logger.info("Manual sendData (manual endpoint) triggered", {
+          sentBillCount: result.sentBillCount,
+          sentAmount: result.sentAmount,
+        });
+      }
+
+      res.json({
+        status: result.success ? "success" : "error",
+        data: {
+          sentBillCount: result.sentBillCount,
+          sentAmount: result.sentAmount,
+          message: result.message,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // ==================== REFERENCE DATA ====================
 
 /**

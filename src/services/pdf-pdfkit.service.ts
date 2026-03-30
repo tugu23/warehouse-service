@@ -181,40 +181,38 @@ class PDFKitService {
     const pageWidth = (doc as any)._pageWidth;
     const contentWidth = (doc as any)._contentWidth;
 
-    // Date on top left corner
+    // Top-right legal note
     this.setFont(doc, "normal");
-    doc
-      .fontSize(7)
-      .text(this.formatDateMongolian(data.orderDate), this.MARGIN, yPos);
+    doc.fontSize(6).fillColor("#555").text(
+      "Сангийн сайдын 2017 оны\n347 дугаар тушаалын хавсралт",
+      this.MARGIN,
+      yPos,
+      { width: contentWidth, align: "right" }
+    );
+    doc.fillColor("black");
 
-    yPos += 10;
+    // Simple left logo mark (text-based to avoid image dependency)
+    doc.fontSize(24).text("⊙", this.MARGIN, yPos + 18);
 
-    // Simple header - just title
+    // Center title
     this.setFont(doc, "bold");
-    doc.fontSize(10).text("ТӨЛБӨРИЙН БАРИМТ", this.MARGIN, yPos, {
+    doc.fontSize(12).text("ТӨЛБӨРИЙН БАРИМТ", this.MARGIN, yPos + 24, {
       width: contentWidth,
       align: "center",
     });
 
-    yPos += 12;
+    // Date on right side below title
+    this.setFont(doc, "normal");
+    doc.fontSize(8).text(`Огноо: ${this.formatDateMongolian(data.orderDate)}`, this.MARGIN, yPos + 54, {
+      width: contentWidth,
+      align: "right",
+    });
 
-    // Show "НӨАТ-гүй падаан" indicator if VAT is not shown
-    if (data.showVat !== true) {
-      doc.fontSize(8).fillColor("red").text("", this.MARGIN, yPos, {
-        width: contentWidth,
-        align: "center",
-      });
-      doc.fillColor("black");
-      yPos += 10;
-    }
+    // Divider
+    const dividerY = yPos + 68;
+    doc.moveTo(this.MARGIN, dividerY).lineTo(pageWidth - this.MARGIN, dividerY).stroke();
 
-    // Divider line
-    doc
-      .moveTo(this.MARGIN, yPos)
-      .lineTo(pageWidth - this.MARGIN, yPos)
-      .stroke();
-
-    return yPos + 8;
+    return dividerY + 8;
   }
 
   private addAllInfoInColumns(
@@ -224,122 +222,40 @@ class PDFKitService {
   ): number {
     const pageWidth = (doc as any)._pageWidth;
     const contentWidth = (doc as any)._contentWidth;
-    const startY = yPos;
-    
-    // Two columns layout
-    const col1X = this.MARGIN;
-    const col2X = this.MARGIN + contentWidth / 2 + 10;
-    const colWidth = contentWidth / 2 - 10;
 
-    // LEFT COLUMN: Баримт + Борлуулагч
-    let y1 = startY;
-    
-    // Баримтын мэдээлэл
-    doc.fontSize(7).font("Roboto-Bold");
-    doc.text("Баримтын мэдээлэл", col1X, y1, { width: colWidth });
-    y1 += 10;
-    doc.fontSize(6.5);
+    const leftX = this.MARGIN;
+    const rightX = this.MARGIN + contentWidth * 0.68;
 
-    const labelWidth = 45;
-    const valueX = col1X + labelWidth;
+    doc.fontSize(8).font("Roboto-Bold").text(`ДДТД: ${data.ebarimtBillId || "0000000000000000"}`, leftX, yPos);
+    yPos += 12;
 
-    // Receipt number
-    doc.font("Roboto-Bold").text("Падаан №:", col1X, y1);
-    doc.font("Roboto").text(data.orderNumber || "N/A", valueX, y1);
-    y1 += 9;
+    doc.fontSize(8).font("Roboto-Bold").text("Борлуулагчийн:", leftX, yPos);
+    yPos += 10;
+    doc.fontSize(7.2).font("Roboto");
+    doc.text(`ТТД: ${this.COMPANY_TIN}`, leftX, yPos);
+    yPos += 9;
+    doc.text(`НЭР: ${this.COMPANY_NAME}`, leftX, yPos, { width: contentWidth * 0.62 });
+    yPos += 9;
+    doc.text(`ХАЯГ: ${this.COMPANY_ADDRESS}`, leftX, yPos, { width: contentWidth * 0.62 });
+    yPos += 9;
+    doc.text(`Утас: ${this.COMPANY_PHONES.join(", ")}`, leftX, yPos);
 
-    // ДДТД
-    doc.font("Roboto-Bold").text("ДДТД:", col1X, y1);
-    doc.font("Roboto").text(data.ebarimtBillId || "Бүртгэлгүй", valueX, y1);
-    y1 += 9;
+    let yR = yPos - 28;
+    doc.fontSize(8).font("Roboto-Bold").text("Худалдан авагчийн:", rightX, yR);
+    yR += 10;
+    doc.fontSize(7.2).font("Roboto");
+    doc.text(`ТТД: ${data.customer.phoneNumber ? "........" : "........"}`, rightX, yR);
+    yR += 9;
+    doc.text(`НЭР: ${data.customer.name || "........"}`, rightX, yR, { width: contentWidth * 0.3 });
+    yR += 9;
+    doc.text(`Хаяг: ${data.customer.address || "........"}`, rightX, yR, { width: contentWidth * 0.3 });
+    yR += 9;
+    doc.text(`Утас: ${data.customer.phoneNumber || "........"}`, rightX, yR);
 
-    // TIN
-    doc.font("Roboto-Bold").text("ТТД:", col1X, y1);
-    doc.font("Roboto").text(this.COMPANY_TIN, valueX, y1);
-    y1 += 9;
+    const dividerY = Math.max(yPos, yR) + 10;
+    doc.moveTo(this.MARGIN, dividerY).lineTo(pageWidth - this.MARGIN, dividerY).stroke();
 
-    // Payment method
-    doc.font("Roboto-Bold").text("Төлбөр:", col1X, y1);
-    doc
-      .font("Roboto")
-      .text(this.translatePaymentMethod(data.paymentMethod), valueX, y1);
-    y1 += 12;
-
-    // Борлуулагч (Company info moved here)
-    doc.fontSize(7).font("Roboto-Bold");
-    doc.text("Борлуулагч", col1X, y1, { width: colWidth });
-    y1 += 10;
-    doc.fontSize(6.5);
-
-    // Company name
-    doc.font("Roboto-Bold").text("Байгууллага:", col1X, y1);
-    doc.font("Roboto").text(this.COMPANY_NAME, col1X, y1 + 9, { width: colWidth });
-    y1 += 18;
-
-    // Company address
-    doc.font("Roboto-Bold").text("Хаяг:", col1X, y1);
-    doc.font("Roboto").text(this.COMPANY_ADDRESS, col1X, y1 + 9, { width: colWidth });
-    y1 += 18;
-
-    // Company phones
-    doc.font("Roboto-Bold").text("Утас:", col1X, y1);
-    doc.font("Roboto").text(this.COMPANY_PHONES.join(", "), col1X, y1 + 9, { width: colWidth });
-    y1 += 18;
-
-    // Agent name
-    doc.font("Roboto-Bold").text("Борлуулагч:", col1X, y1);
-    doc.font("Roboto").text(data.agent.name || "N/A", valueX, y1);
-    y1 += 9;
-
-    // Agent phone
-    if (data.agent.phoneNumber) {
-      doc.font("Roboto-Bold").text("Утас:", col1X, y1);
-      doc.font("Roboto").text(data.agent.phoneNumber, valueX, y1);
-      y1 += 9;
-    }
-
-    // RIGHT COLUMN: Худалдан авагч
-    let y2 = startY;
-    doc.fontSize(7).font("Roboto-Bold");
-    doc.text("Худалдан авагч", col2X, y2, { width: colWidth });
-    y2 += 10;
-    doc.fontSize(6.5);
-
-    const labelWidth2 = 28;
-    const valueX2 = col2X + labelWidth2;
-
-    // Buyer name
-    doc.font("Roboto-Bold").text("Нэр:", col2X, y2);
-    doc.font("Roboto").text(data.customer.name || "N/A", valueX2, y2);
-    y2 += 9;
-
-    // Buyer phone
-    if (data.customer.phoneNumber) {
-      doc.font("Roboto-Bold").text("Утас:", col2X, y2);
-      doc.font("Roboto").text(data.customer.phoneNumber, valueX2, y2);
-      y2 += 9;
-    }
-
-    // Buyer address
-    if (data.customer.address) {
-      doc.font("Roboto-Bold").text("Хаяг:", col2X, y2);
-      doc.font("Roboto").text(data.customer.address, valueX2, y2, { width: colWidth - labelWidth2 });
-      y2 += 18;
-    }
-
-    // Find the maximum Y position
-    const maxY = Math.max(y1, y2);
-    yPos = maxY + 8;
-
-    // Divider
-    doc
-      .moveTo(this.MARGIN, yPos)
-      .lineTo(pageWidth - this.MARGIN, yPos)
-      .strokeOpacity(0.3)
-      .stroke()
-      .strokeOpacity(1);
-
-    return yPos + 8;
+    return dividerY + 6;
   }
 
   private addItemsTable(
@@ -350,112 +266,85 @@ class PDFKitService {
     const pageWidth = (doc as any)._pageWidth;
     const contentWidth = (doc as any)._contentWidth;
 
-    // Table settings - optimized column widths
     const tableTop = yPos;
     const col1X = this.MARGIN;
-    const numWidth = 18; // № column width
-    const col2X = col1X + numWidth; // №
+    const noW = 28;
+    const nameW = contentWidth * 0.36;
+    const codeW = 40;
+    const unitW = 44;
+    const qtyW = 54;
+    const unitPriceW = 100;
+    const totalW = contentWidth - (noW + nameW + codeW + unitW + qtyW + unitPriceW);
 
-    // Calculate optimal widths based on content
-    const nameWidth = contentWidth * 0.28; // Барааны нэр - reduced from 0.35
-    const barcodeWidth = contentWidth * 0.14; // Баркод - reduced from 0.18
-    const qtyWidth = contentWidth * 0.1; // Тоо/Ширхэг
-    const unitPriceWidth = contentWidth * 0.14; // Нэгж үнэ
-    const totalPriceWidth = contentWidth * 0.16; // Нийт үнэ - increased
+    const col2X = col1X + noW;
+    const col3X = col2X + nameW;
+    const col4X = col3X + codeW;
+    const col5X = col4X + unitW;
+    const col6X = col5X + qtyW;
+    const col7X = col6X + unitPriceW;
 
-    const col3X = col2X + nameWidth;
-    const col4X = col3X + barcodeWidth;
-    const col5X = col4X + qtyWidth;
-    const col6X = col5X + unitPriceWidth;
-    const rowHeight = 14;
+    const headerH = 22;
+    const rowH = 18;
 
-    // Table header
-    doc.fontSize(6.5).font("Roboto-Bold");
+    doc.rect(this.MARGIN, yPos, contentWidth, headerH).stroke("#999");
 
-    // Header background
-    doc
-      .rect(this.MARGIN, yPos, contentWidth, rowHeight)
-      .fillOpacity(0.1)
-      .fill()
-      .fillOpacity(1);
+    [col2X, col3X, col4X, col5X, col6X, col7X].forEach((x) => {
+      doc.moveTo(x, yPos).lineTo(x, yPos + headerH).stroke("#999");
+    });
 
-    yPos += 5;
-
-    doc.text("№", col1X + 2, yPos, { width: numWidth - 4, align: "center" });
-    doc.text("Барааны нэр", col2X, yPos, { width: nameWidth });
-    doc.text("Баркод", col3X, yPos, { width: barcodeWidth });
-    doc.text("Тоо/Ширхэг", col4X, yPos, {
-      width: qtyWidth,
+    doc.font("Roboto-Bold").fontSize(7.5);
+    doc.text("Д/д", col1X + 2, yPos + 7, { width: noW - 4, align: "center" });
+    doc.text("Бараа, ажил, үйлчилгээний нэр", col2X + 2, yPos + 7, {
+      width: nameW - 4,
       align: "center",
     });
-    doc.text("Нэгж үнэ", col5X, yPos, {
-      width: unitPriceWidth,
-      align: "right",
-    });
-    doc.text("Нийт үнэ", col6X, yPos, {
-      width: totalPriceWidth,
-      align: "right",
-    });
+    doc.text("Код", col3X + 2, yPos + 7, { width: codeW - 4, align: "center" });
+    doc.text("Хэмжих нэгж", col4X + 2, yPos + 7, { width: unitW - 4, align: "center" });
+    doc.text("Тоо, хэмжээ", col5X + 2, yPos + 7, { width: qtyW - 4, align: "center" });
+    doc.text("Нэгжийн үнэ", col6X + 2, yPos + 7, { width: unitPriceW - 4, align: "right" });
+    doc.text("Бүгд үнэ", col7X + 2, yPos + 7, { width: totalW - 4, align: "right" });
 
-    yPos += rowHeight - 5;
+    yPos += headerH;
 
-    // Table border
-    doc
-      .moveTo(this.MARGIN, tableTop)
-      .lineTo(pageWidth - this.MARGIN, tableTop)
-      .moveTo(this.MARGIN, yPos)
-      .lineTo(pageWidth - this.MARGIN, yPos)
-      .stroke();
-
-    // Table rows
-    doc.fontSize(6.5).font("Roboto");
-
-    data.items.forEach((item, index) => {
-      yPos += 3;
-
-      doc.text((index + 1).toString(), col1X + 2, yPos, {
-        width: numWidth - 4,
-        align: "center",
+    const maxRows = 4;
+    const rowsToRender = [...data.items];
+    while (rowsToRender.length < maxRows) {
+      rowsToRender.push({
+        productName: "",
+        productCode: "",
+        quantity: 0,
+        unitPrice: 0,
+        total: 0,
       });
-      doc.text(item.productName, col2X, yPos, { width: nameWidth - 2 });
-      doc.text(item.barcode || item.productCode || "N/A", col3X, yPos, {
-        width: barcodeWidth - 2,
-      });
-      doc.text(item.quantity.toString(), col4X, yPos, {
-        width: qtyWidth,
-        align: "center",
-      });
-      doc.text(this.formatCurrencyShort(item.unitPrice), col5X, yPos, {
-        width: unitPriceWidth,
-        align: "right",
-      });
-      doc.text(this.formatCurrencyShort(item.total), col6X, yPos, {
-        width: totalPriceWidth,
-        align: "right",
+    }
+
+    doc.font("Roboto").fontSize(7.2);
+    rowsToRender.slice(0, maxRows).forEach((item, idx) => {
+      doc.rect(this.MARGIN, yPos, contentWidth, rowH).stroke("#bbb");
+      [col2X, col3X, col4X, col5X, col6X, col7X].forEach((x) => {
+        doc.moveTo(x, yPos).lineTo(x, yPos + rowH).stroke("#bbb");
       });
 
-      yPos += rowHeight - 3;
+      if (item.productName) {
+        doc.text(String(idx + 1), col1X + 2, yPos + 6, { width: noW - 4, align: "center" });
+        doc.text(item.productName, col2X + 2, yPos + 6, { width: nameW - 4 });
+        doc.text(item.productCode || "", col3X + 2, yPos + 6, { width: codeW - 4, align: "center" });
+        doc.text("ш", col4X + 2, yPos + 6, { width: unitW - 4, align: "center" });
+        doc.text(String(item.quantity || 0), col5X + 2, yPos + 6, { width: qtyW - 4, align: "center" });
+        doc.text(this.formatCurrencyShort(item.unitPrice), col6X + 2, yPos + 6, {
+          width: unitPriceW - 4,
+          align: "right",
+        });
+        doc.text(this.formatCurrencyShort(item.total), col7X + 2, yPos + 6, {
+          width: totalW - 4,
+          align: "right",
+        });
+      }
 
-      // Row divider
-      doc
-        .moveTo(this.MARGIN, yPos)
-        .lineTo(pageWidth - this.MARGIN, yPos)
-        .strokeOpacity(0.2)
-        .stroke()
-        .strokeOpacity(1);
+      yPos += rowH;
     });
 
-    yPos += 8;
-
-    // Final divider
-    doc
-      .moveTo(this.MARGIN, yPos)
-      .lineTo(pageWidth - this.MARGIN, yPos)
-      .strokeOpacity(0.3)
-      .stroke()
-      .strokeOpacity(1);
-
-    return yPos + 8;
+    return yPos;
   }
 
   private async addVATAndQRInColumns(
@@ -464,142 +353,69 @@ class PDFKitService {
     qrCodeDataURL: string,
     yPos: number
   ): Promise<number> {
-    const pageWidth = (doc as any)._pageWidth;
     const contentWidth = (doc as any)._contentWidth;
 
-    // Check if VAT should be shown (default: false - no VAT)
-    const showVat = data.showVat === true;
+    let subtotal = Number(data.subtotal || 0);
+    let vat = Number(data.vat || 0);
+    let total = Number(data.total || 0);
+    if (subtotal > 0 && total <= subtotal) {
+      vat = Math.round(subtotal * 0.1 * 100) / 100;
+      total = Math.round((subtotal + vat) * 100) / 100;
+    }
 
-    if (showVat) {
-      // WITH VAT: Show QR code and lottery section
-    const col1X = this.MARGIN;
-    const col1Width = contentWidth / 2 - 10;
+    const leftX = this.MARGIN;
+    const rightX = this.MARGIN + contentWidth * 0.62;
 
-    doc.fontSize(7).font("Roboto-Bold");
-    doc.text("QR код ба Сугалаа", col1X, yPos, { width: col1Width });
-    let y1 = yPos + 10;
-
-    // Convert QR data URL to buffer
+    // Left: QR area (stamp area style)
     const qrBuffer = Buffer.from(qrCodeDataURL.split(",")[1], "base64");
-
-    // Add QR code
     const qrSize = 60;
-    doc.image(qrBuffer, col1X, y1, { width: qrSize, height: qrSize });
+    doc.image(qrBuffer, leftX + 14, yPos + 8, { width: qrSize, height: qrSize });
+    doc.font("Roboto").fontSize(8).text("Тамга", leftX + 26, yPos + qrSize + 20);
 
-    // Lottery number (if available)
-    if (data.ebarimtLottery) {
-      const lotteryX = col1X + qrSize + 10;
+    // Right: totals table block like screenshot
+    const labels = [
+      "Бараа, ажил үйлчилгээний үнэ:",
+      "Нэмэгдсэн өртгийн албан татвар:",
+      "Нийслэл хотын албан татвар:",
+      "Нийт дүн:",
+    ];
+    const values = [subtotal, vat, 0, total];
 
-      doc.fontSize(7).font("Roboto-Bold").text("Сугалаа:", lotteryX, y1);
+    const rowH = 20;
+    const labelW = 160;
+    const valueW = 70;
 
+    doc.fontSize(7.5);
+    labels.forEach((label, i) => {
+      const rowY = yPos + i * rowH;
+      doc.rect(rightX, rowY, labelW, rowH).stroke("#bbb");
+      doc.rect(rightX + labelW, rowY, valueW, rowH).stroke("#bbb");
+      doc.font("Roboto").text(label, rightX + 6, rowY + 6, { width: labelW - 10 });
       doc
-        .fontSize(11)
-        .font("Roboto-Bold")
-        .text(data.ebarimtLottery, lotteryX, y1 + 12);
+        .font(i === labels.length - 1 ? "Roboto-Bold" : "Roboto")
+        .text(this.formatCurrencyShort(values[i] || 0), rightX + labelW + 6, rowY + 6, {
+          width: valueW - 10,
+          align: "right",
+        });
+    });
 
-      doc
-        .fontSize(5.5)
-        .font("Roboto")
-        .text(
-          "Та энэ дугаараа хадгалж,\nсарын эцэст сугалаанд\nоролцоно уу!",
-          lotteryX,
-          y1 + 28,
-          { width: 100 }
-        );
-    } else {
-      const lotteryX = col1X + qrSize + 10;
-      doc
-        .fontSize(6.5)
-        .font("Roboto")
-        .text("E-Barimt\nбүртгэлгүй", lotteryX, y1 + 20);
-    }
-
-    // QR verification text
-    doc
-      .fontSize(5.5)
-      .font("Roboto")
-      .text("QR код уншуулж\nбаримт шалгана уу", col1X, y1 + qrSize + 3, {
-        width: qrSize,
-        align: "center",
-      });
-
-      // Right column: Price summary with VAT
-    const col2X = this.MARGIN + contentWidth / 2 + 10;
-
-    let y2 = yPos;
-    doc.fontSize(6.5);
-
-    // Use backend-provided values (they are already calculated correctly)
-    const subtotal = data.subtotal;
-    const vat = data.vat;
-    const total = data.total;
-
-    // Subtotal (Барааны нийт дүн)
-    doc.font("Roboto-Bold").text("Барааны нийт дүн:", col2X, y2);
-    doc
-      .font("Roboto")
-      .text(this.formatCurrencyShort(subtotal), col2X + 90, y2);
-    y2 += 10;
-
-    // VAT 10%
-    doc.font("Roboto-Bold").text("НӨАТ (10%):", col2X, y2);
-    doc
-      .font("Roboto")
-      .text(this.formatCurrencyShort(vat), col2X + 90, y2);
-    y2 += 10;
-
-    // Total (Нийт үнэ = Subtotal + VAT)
-    doc.font("Roboto-Bold").text("Нийт үнэ:", col2X, y2);
-    doc
-      .font("Roboto")
-      .text(this.formatCurrencyShort(total), col2X + 90, y2);
-
-    const maxY = Math.max(y1 + qrSize + 15, y2);
-    yPos = maxY + 15;
-    } else {
-      // WITHOUT VAT: Simple total display without QR code/lottery
-      doc.fontSize(8).font("Roboto-Bold");
-
-      // Center-aligned total section - use actual total, not calculated subtotal
-      const totalText = `Нийт дүн: ${this.formatCurrencyShort(data.total)}`;
-      doc.text(totalText, this.MARGIN, yPos, {
-        width: contentWidth,
-        align: "right",
-      });
-
-      yPos += 20;
-    }
-
-    // Signature section - vertical layout, centered
-    doc.fontSize(6.5).font("Roboto");
-
-    // Хүлээлгэн өгсөн (дээр)
+    const sigStartY = yPos + rowH * labels.length + 6;
+    doc.font("Roboto").fontSize(8);
     doc.text(
-      "Хүлээлгэн өгсөн: ......................./......................./",
-      this.MARGIN,
-      yPos,
-      {
-        width: contentWidth,
-        align: "center",
-      }
+      "Хүлээн авсан: ........................................ /................................../",
+      this.MARGIN + contentWidth * 0.34,
+      sigStartY
     );
+    doc.text("(гарын үсэг)   (нэр)", this.MARGIN + contentWidth * 0.58, sigStartY + 13);
 
-    yPos += 12;
-
-    // Хүлээн авсан (доор)
     doc.text(
-      "Хүлээн авсан: ......................./......................./",
-      this.MARGIN,
-      yPos,
-      {
-        width: contentWidth,
-        align: "center",
-      }
+      "Хүлээлгэн өгсөн: .................................... /................................../",
+      this.MARGIN + contentWidth * 0.34,
+      sigStartY + 30
     );
+    doc.text("(гарын үсэг)   (нэр)", this.MARGIN + contentWidth * 0.58, sigStartY + 43);
 
-    yPos += 15;
-
-    return yPos;
+    return sigStartY + 56;
   }
 
   private addFooter(doc: PDFKit.PDFDocument): void {

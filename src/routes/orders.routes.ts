@@ -4,6 +4,7 @@ import {
   createOrder,
   getAllOrders,
   getOrderById,
+  updateOrder,
   updateOrderStatus,
   updateOrderEbarimt,
   getOrderReceipt,
@@ -239,6 +240,55 @@ router.get(
   "/:id",
   validate([param("id").isInt().withMessage("Valid order ID is required")]),
   getOrderById
+);
+
+router.put(
+  "/:id",
+  checkRole([
+    "Admin",
+    "Manager",
+    "SalesAgent",
+    "MarketSalesperson",
+    "StoreSalesperson",
+  ]),
+  validate([
+    param("id").isInt().withMessage("Valid order ID is required"),
+    body("customerId").isInt().withMessage("Valid customer ID is required"),
+    body("items")
+      .isArray({ min: 1 })
+      .withMessage("Order must contain at least one item"),
+    body("items.*.productId")
+      .isInt()
+      .withMessage("Valid product ID is required"),
+    body("items.*.quantity")
+      .isInt({ min: 1 })
+      .withMessage("Quantity must be at least 1"),
+    body("items.*.priceMode")
+      .optional()
+      .isIn(["auto", "wholesale", "retail", "custom"])
+      .withMessage("Invalid price mode"),
+    body("items.*.customUnitPrice")
+      .optional({ nullable: true })
+      .isFloat({ gt: 0 })
+      .withMessage("customUnitPrice must be greater than 0"),
+    body("orderType")
+      .optional()
+      .isIn(["Market", "Store"])
+      .withMessage("Order type must be Market or Store"),
+    body("deliveryDate")
+      .optional({ nullable: true, checkFalsy: true })
+      .isISO8601()
+      .withMessage("Delivery date must be a valid date"),
+    body("paymentMethod")
+      .optional()
+      .isIn(["Cash", "Credit", "BankTransfer", "Sales", "Padan"])
+      .withMessage("Invalid payment method"),
+    body("creditTermDays")
+      .optional({ nullable: true, checkFalsy: true })
+      .isInt({ min: 1 })
+      .withMessage("Credit term days must be a positive integer"),
+  ]),
+  updateOrder
 );
 
 /**

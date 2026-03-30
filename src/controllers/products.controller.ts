@@ -45,11 +45,11 @@ export const createProduct = async (
     const product = await prisma.product.create({
       data: {
         nameMongolian,
-        nameEnglish,
-        nameKorean,
+       // nameEnglish,
+       // nameKorean,
         productCode,
         barcode,
-        supplierId,
+        //supplierId,
         categoryId,
         stockQuantity: stockQuantity || 0,
         unitsPerBox,
@@ -61,7 +61,7 @@ export const createProduct = async (
         isActive: isActive !== undefined ? isActive : true,
       },
       include: {
-        supplier: true,
+        //supplier: true,
         category: true,
       },
     });
@@ -183,7 +183,7 @@ export const getProductById = async (
     const product = await prisma.product.findUnique({
       where: { id: parseInt(id) },
       include: {
-        supplier: true,
+        
         category: true,
         batches: {
           where: {
@@ -267,11 +267,11 @@ export const updateProduct = async (
       where: { id: parseInt(id) },
       data: {
         nameMongolian,
-        nameEnglish,
-        nameKorean,
+       // nameEnglish,
+        //nameKorean,
         productCode,
         barcode,
-        supplierId,
+       // supplierId,
         categoryId,
         unitsPerBox,
         priceWholesale,
@@ -282,7 +282,7 @@ export const updateProduct = async (
         isActive,
       },
       include: {
-        supplier: true,
+        
         category: true,
       },
     });
@@ -357,7 +357,7 @@ export const getProductByBarcode = async (
     const products = await prisma.product.findMany({
       where: { barcode },
       include: {
-        supplier: true,
+        //supplier: true,
         category: true,
         batches: {
           where: {

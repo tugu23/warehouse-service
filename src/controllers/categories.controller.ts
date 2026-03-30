@@ -14,7 +14,7 @@ export const createCategory = async (
     // Check if category already exists
     const existingCategory = await prisma.category.findFirst({
       where: {
-        OR: [{ nameMongolian }, { nameEnglish: nameEnglish || undefined }],
+        OR: [{ nameMongolian }],
       },
     });
 
@@ -25,7 +25,6 @@ export const createCategory = async (
     const category = await prisma.category.create({
       data: {
         nameMongolian,
-        nameEnglish,
         description,
       },
     });
@@ -74,7 +73,6 @@ export const getAllCategories = async (
             select: {
               id: true,
               nameMongolian: true,
-              nameEnglish: true,
             },
           },
         },
@@ -114,7 +112,6 @@ export const getCategoryById = async (
       include: {
         products: {
           include: {
-            supplier: true,
           },
         },
       },
@@ -159,9 +156,6 @@ export const updateCategory = async (
             {
               OR: [
                 { nameMongolian: nameMongolian || category.nameMongolian },
-                {
-                  nameEnglish: nameEnglish || category.nameEnglish || undefined,
-                },
               ],
             },
           ],
@@ -177,7 +171,6 @@ export const updateCategory = async (
       where: { id: parseInt(id) },
       data: {
         nameMongolian,
-        nameEnglish,
         description,
       },
     });

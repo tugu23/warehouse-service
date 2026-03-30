@@ -119,19 +119,9 @@ export const createOrder = async (
           },
         });
 
-        // Check if we have enough inventory in non-expired batches
-        const totalBatchQuantity = batches.reduce(
-          (sum, batch) => sum + batch.quantity,
-          0
-        );
-
-        if (totalBatchQuantity < item.quantity) {
-          throw new AppError(
-            `${product.nameMongolian} барааны идэвхтэй багцын үлдэгдэл хүрэлцэхгүй. Үлдэгдэл: ${totalBatchQuantity}, Захиалсан: ${item.quantity}`,
-            400
-          );
-        }
-
+        // Allocate from active batches using FIFO.
+        // If batch stock is short, continue using product-level stock (validated above).
+        // This keeps sales flowing even when batch data is incomplete.
         // Allocate quantity from batches using FIFO
         let remainingQuantity = item.quantity;
         for (const batch of batches) {
@@ -479,6 +469,147 @@ export const getOrderById = async (
     res.json({
       status: "success",
       data: { order: orderWithAliases },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateOrder = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const authReq = req as AuthRequest;
+    const { id } = req.params;
+    const orderId = parseInt(id);
+    const {
+      customerId,
+      items,
+      paymentMethod = "Cash",
+      creditTermDays: creditTermDaysRaw,
+      orderType = "Store",
+      deliveryDate,
+    } = req.body;
+
+    const existingOrder = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { orderItems: true },
+    });
+
+    if (!existingOrder) throw new AppError(req.t.orders.notFound, 404);
+    if (existingOrder.status !== "Pending") throw new AppError("Зөвхөн Pending захиалгыг засна", 400);
+    if (existingOrder.ebarimtRegistered) throw new AppError("И-баримт бүртгэгдсэн захиалгыг засах боломжгүй", 400);
+
+    if (authReq.user?.role === "SalesAgent" && existingOrder.agentId !== authReq.user.userId) {
+      throw new AppError(req.t.auth.forbidden, 403);
+    }
+
+    const customerIdNum = Number(customerId);
+    if (!Number.isInteger(customerIdNum)) throw new AppError("Valid customerId is required", 400);
+    if (!Array.isArray(items) || items.length === 0) throw new AppError(req.t.orders.noItems, 400);
+
+    const creditTermDays =
+      creditTermDaysRaw === undefined || creditTermDaysRaw === null || creditTermDaysRaw === ""
+        ? undefined
+        : Number(creditTermDaysRaw);
+
+    if (paymentMethod === "Credit" && (!creditTermDays || !Number.isFinite(creditTermDays))) {
+      throw new AppError("Зээлийн төлбөрт хугацаа заах шаардлагатай", 400);
+    }
+
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      for (const oldItem of existingOrder.orderItems) {
+        await tx.product.update({
+          where: { id: oldItem.productId },
+          data: { stockQuantity: { increment: oldItem.quantity } },
+        });
+      }
+
+      await tx.orderItem.deleteMany({ where: { orderId } });
+
+      let subtotalAmount = new Prisma.Decimal(0);
+      const orderItemsData: { productId: number; quantity: number; unitPrice: Prisma.Decimal }[] = [];
+
+      for (const item of items) {
+        const product = await tx.product.findUnique({ where: { id: item.productId } });
+        if (!product) throw new AppError(`ID ${item.productId} дугаартай бараа олдсонгүй`, 404);
+        if (product.stockQuantity < item.quantity) {
+          throw new AppError(`${product.nameMongolian} барааны үлдэгдэл хүрэлцэхгүй байна`, 400);
+        }
+
+        const mode = (item.priceMode || "auto") as "auto" | "wholesale" | "retail" | "custom";
+        let unitPrice: Prisma.Decimal | null = null;
+        if (mode === "custom") {
+          const cp = Number(item.customUnitPrice ?? item.unitPrice);
+          if (!Number.isFinite(cp) || cp <= 0) throw new AppError(`${product.nameMongolian} барааны үнэ буруу`, 400);
+          unitPrice = new Prisma.Decimal(cp);
+        } else if (mode === "wholesale") {
+          unitPrice = product.priceWholesale || product.priceRetail;
+        } else if (mode === "retail") {
+          unitPrice = product.priceRetail || product.priceWholesale;
+        } else {
+          unitPrice = orderType === "Market" ? product.priceWholesale : product.priceRetail;
+          if (!unitPrice) unitPrice = product.priceRetail || product.priceWholesale;
+        }
+
+        if (!unitPrice) throw new AppError(`${product.nameMongolian} барааны үнэ тохируулаагүй байна`, 400);
+
+        subtotalAmount = subtotalAmount.add(new Prisma.Decimal(unitPrice.toString()).mul(item.quantity));
+        orderItemsData.push({ productId: item.productId, quantity: item.quantity, unitPrice });
+
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { stockQuantity: { decrement: item.quantity } },
+        });
+      }
+
+      const vatCalc = vatService.addVAT(subtotalAmount);
+      const vatAmount = vatCalc.vat;
+      const totalAmount = vatCalc.total;
+
+      const dueDate = paymentMethod === "Credit" && creditTermDays ? addDays(new Date(), creditTermDays) : null;
+      const paymentStatus: "Paid" | "Pending" = paymentMethod === "Cash" ? "Paid" : "Pending";
+
+      return await tx.order.update({
+        where: { id: orderId },
+        data: {
+          customerId: customerIdNum,
+          orderType,
+          deliveryDate: orderType === "Market" && deliveryDate ? new Date(deliveryDate) : null,
+          subtotalAmount,
+          vatAmount,
+          totalAmount,
+          paymentMethod,
+          paymentStatus,
+          creditTermDays: creditTermDays ?? null,
+          dueDate,
+          paidAmount: paymentMethod === "Cash" ? totalAmount : 0,
+          remainingAmount: paymentMethod === "Cash" ? 0 : totalAmount,
+          orderItems: { create: orderItemsData },
+        },
+        include: {
+          customer: true,
+          agent: { include: { role: true } },
+          orderItems: { include: { product: true } },
+        },
+      });
+    });
+
+    res.json({
+      status: "success",
+      data: {
+        order: {
+          ...updatedOrder,
+          createdBy: updatedOrder.agent,
+          createdAt: updatedOrder.orderDate,
+          orderItems: updatedOrder.orderItems.map((item) => ({
+            ...item,
+            subtotal: new Prisma.Decimal(item.unitPrice.toString()).mul(item.quantity),
+          })),
+        },
+      },
     });
   } catch (error) {
     next(error);

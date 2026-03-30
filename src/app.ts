@@ -1,4 +1,7 @@
 import express, { Application } from "express";
+
+import cron from 'node-cron';
+
 import cors from "cors";
 import morgan from "morgan";
 import rateLimit from "express-rate-limit";
@@ -15,7 +18,6 @@ import employeesRoutes from "./routes/employees.routes";
 import productsRoutes from "./routes/products.routes";
 import customersRoutes from "./routes/customers.routes";
 import ordersRoutes from "./routes/orders.routes";
-import returnsRoutes from "./routes/returns.routes";
 import agentsRoutes from "./routes/agents.routes";
 import categoriesRoutes from "./routes/categories.routes";
 import paymentsRoutes from "./routes/payments.routes";
@@ -24,13 +26,13 @@ import deliveryPlansRoutes from "./routes/delivery-plans.routes";
 import reportsRoutes from "./routes/reports.routes";
 import posapiRoutes from "./routes/posapi.routes";
 import storesRoutes from "./routes/stores.routes";
-import analyticsRoutes from "./routes/analytics.routes";
 import productPriceRoutes from "./routes/productPrice.routes";
 import customerTypesRoutes from "./routes/customerTypes.routes";
 import etaxRoutes from "./routes/etax.routes";
 import ebarimtRoutes from "./routes/ebarimt.routes";
 import bunaRoutes from "./routes/buna.routes";
 import agentKpiRoutes from "./routes/agent-kpi.routes";
+import ebarimtService from "./services/ebarimt.service";
 
 const app: Application = express();
 
@@ -109,6 +111,38 @@ app.get("/health", (req, res) => {
   });
 });
 
+// Cron job to auto-send E-Barimt data daily at 23:00 (Asia/Ulaanbaatar)
+cron.schedule(
+  "0 23 * * *",
+  async () => {
+    try {
+      if (!ebarimtService.isServiceEnabled()) {
+        logger.warn("E-Barimt service is disabled; skipping scheduled sendData");
+        return;
+      }
+
+      logger.info("Scheduled sendData triggered");
+      const result = await ebarimtService.sendData();
+
+      if (result.success) {
+        logger.info("Scheduled sendData completed", {
+          sentBillCount: result.sentBillCount,
+          sentAmount: result.sentAmount,
+        });
+      } else {
+        logger.warn("Scheduled sendData failed", {
+          message: result.message,
+          errorCode: result.errorCode,
+        });
+      }
+    } catch (error) {
+      logger.error("Scheduled sendData error", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  },
+  { timezone: "Asia/Ulaanbaatar" }
+);
 // API Documentation
 app.use(
   "/api-docs",
@@ -127,7 +161,6 @@ app.use("/api/products", productsRoutes);
 app.use("/api/products", productBatchesRoutes); // Product batch routes nested under products
 app.use("/api/customers", customersRoutes);
 app.use("/api/orders", ordersRoutes);
-app.use("/api/returns", returnsRoutes);
 app.use("/api/agents", agentsRoutes);
 app.use("/api/categories", categoriesRoutes);
 app.use("/api/payments", paymentsRoutes);
@@ -135,7 +168,6 @@ app.use("/api/delivery-plans", deliveryPlansRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/posapi", posapiRoutes);
 app.use("/api/stores", storesRoutes);
-app.use("/api/analytics", analyticsRoutes);
 app.use("/api/product-prices", productPriceRoutes);
 app.use("/api/customer-types", customerTypesRoutes);
 app.use("/api/etax", etaxRoutes);
