@@ -154,25 +154,32 @@ async function main() {
 
   console.log("Employees created successfully");
 
-  // Create customer types
+  // Create customer types: Зах, Дэлгүүр, Номин, CU, Наш
   console.log("Creating customer types...");
-  const retailType = await prisma.customerType.upsert({
-    where: { id: 1 },
-    update: {},
-    create: {
-      id: 1,
-      typeName: "Retail",
-    },
-  });
-
-  const wholesaleType = await prisma.customerType.upsert({
-    where: { id: 2 },
-    update: {},
-    create: {
-      id: 2,
-      typeName: "Wholesale",
-    },
-  });
+  const CUSTOMER_TYPE_NAMES = [
+    "Зах",
+    "Дэлгүүр",
+    "Номин",
+    "CU",
+    "Наш",
+  ] as const;
+  const customerTypesList = [];
+  for (let i = 0; i < CUSTOMER_TYPE_NAMES.length; i++) {
+    const t = await prisma.customerType.upsert({
+      where: { id: i + 1 },
+      update: { typeName: CUSTOMER_TYPE_NAMES[i] },
+      create: {
+        id: i + 1,
+        typeName: CUSTOMER_TYPE_NAMES[i],
+      },
+    });
+    customerTypesList.push(t);
+  }
+  const zakhType = customerTypesList[0]!;
+  const delguurType = customerTypesList[1]!;
+  const nominType = customerTypesList[2]!;
+  const wholesaleType = delguurType;
+  const retailType = zakhType;
 
   console.log("Customer types created successfully");
 
@@ -347,7 +354,7 @@ async function main() {
         paymentTerms: "Зээл - 30 хоног",
         locationLatitude: 47.9189,
         locationLongitude: 106.9174,
-        customerTypeId: wholesaleType.id,
+        customerTypeId: delguurType.id,
         assignedAgentId: salesAgent?.id,
       },
       {
@@ -364,7 +371,7 @@ async function main() {
         paymentTerms: "Бэлэн",
         locationLatitude: 47.9242,
         locationLongitude: 106.9208,
-        customerTypeId: wholesaleType.id,
+        customerTypeId: nominType.id,
         assignedAgentId: salesAgent?.id,
       },
       {
@@ -381,7 +388,7 @@ async function main() {
         paymentTerms: "Бэлэн",
         locationLatitude: 47.9088,
         locationLongitude: 106.9527,
-        customerTypeId: retailType.id,
+        customerTypeId: zakhType.id,
         assignedAgentId: salesAgent?.id,
       },
       {
@@ -398,7 +405,7 @@ async function main() {
         paymentTerms: "Данс",
         locationLatitude: 47.8897,
         locationLongitude: 106.9319,
-        customerTypeId: retailType.id,
+        customerTypeId: zakhType.id,
         assignedAgentId: salesAgent?.id,
       },
     ],

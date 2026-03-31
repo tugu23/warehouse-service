@@ -282,8 +282,9 @@ export const updateCustomer = async (
 };
 
 /**
- * Remove duplicate customers (Admin only)
- * Keeps the customer with lowest ID for each duplicate name
+ * Давхардсан харилцагчийг цэвэрлэх (Admin only).
+ * Ижил (нэр + утас)-тай бүлгүүдэд хамгийн бага ID-тай мөрийг үлдээж, бусадын захиалга/буцаалт/хүргэлтийн
+ * customer_id-г үлдээх мөр руу шилжүүлсний дараа устгана.
  */
 export const removeDuplicateCustomers = async (
   req: Request,
@@ -291,56 +292,57 @@ export const removeDuplicateCustomers = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    // Find all duplicate customer names
-    const duplicates = await prisma.$queryRaw<Array<{ name: string; count: bigint }>>`
-      SELECT name, COUNT(*) as count
-      FROM customers
-      GROUP BY name
-      HAVING COUNT(*) > 1
-    `;
-
-    if (duplicates.length === 0) {
-      res.json({
-        status: "success",
-        message: "No duplicate customers found",
-        data: { removed: 0, duplicates: [] },
-      });
-      return;
-    }
-
-    let totalRemoved = 0;
-    const duplicateNames: string[] = [];
-
-    // For each duplicate name, keep only the first (lowest ID)
-    for (const dup of duplicates) {
-      duplicateNames.push(dup.name);
-      
-      // Get all customers with this name
-      const customers = await prisma.customer.findMany({
-        where: { name: dup.name },
-        orderBy: { id: 'asc' },
-      });
-
-      // Delete all except the first one
-      if (customers.length > 1) {
-        const idsToDelete = customers.slice(1).map(c => c.id);
-        const deleted = await prisma.customer.deleteMany({
-          where: { id: { in: idsToDelete } },
+    const { removed } = await prisma.$transaction(
+      async (tx) => {
+        const all = await tx.customer.findMany({
+          orderBy: { id: "asc" },
+          select: { id: true, name: true, phoneNumber: true },
         });
-        totalRemoved += deleted.count;
-        logger.info(`Removed ${deleted.count} duplicate(s) for customer: ${dup.name}`);
-      }
-    }
 
-    logger.info(`Total duplicate customers removed: ${totalRemoved}`);
+        const groupKey = (c: {
+          name: string;
+          phoneNumber: string | null;
+        }) => `${c.name}\t${(c.phoneNumber ?? "").trim()}`;
+
+        const groups = new Map<string, number[]>();
+        for (const c of all) {
+          const k = groupKey(c);
+          if (!groups.has(k)) groups.set(k, []);
+          groups.get(k)!.push(c.id);
+        }
+
+        let removedCount = 0;
+
+        for (const ids of groups.values()) {
+          if (ids.length < 2) continue;
+          const keepId = ids[0]!;
+          for (const removeId of ids.slice(1)) {
+            // Шууд SQL: FK-г шилжүүлсний дараа л customer устгана (Prisma client хуучин байсан ч ижил логик)
+            await tx.$executeRaw`
+              UPDATE "orders" SET customer_id = ${keepId} WHERE customer_id = ${removeId}
+            `;
+            await tx.$executeRaw`
+              UPDATE "returns" SET customer_id = ${keepId} WHERE customer_id = ${removeId}
+            `;
+            await tx.$executeRaw`
+              UPDATE "delivery_plans" SET customer_id = ${keepId} WHERE customer_id = ${removeId}
+            `;
+            await tx.customer.delete({ where: { id: removeId } });
+            removedCount++;
+          }
+        }
+
+        return { removed: removedCount };
+      },
+      { maxWait: 60000, timeout: 900000 }
+    );
+
+    logger.info(`removeDuplicateCustomers: removed ${removed} duplicate customer rows`);
 
     res.json({
       status: "success",
-      message: `Removed ${totalRemoved} duplicate customers`,
-      data: {
-        removed: totalRemoved,
-        duplicates: duplicateNames,
-      },
+      message: `Давхардсан ${removed} харилцагчийн мөриг устгасан (нэр+утас ижил бүлэгт хамгийн бага ID үлдсэн).`,
+      data: { removed },
     });
   } catch (error) {
     next(error);

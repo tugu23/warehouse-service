@@ -98,19 +98,35 @@ export async function createTestEmployees(roles: {
   return { admin, manager, agent };
 }
 
+const CUSTOMER_TYPE_NAMES = ["Зах", "Дэлгүүр", "Номин", "CU", "Наш"] as const;
+
 /**
- * Create customer types
+ * Create customer types (Зах … Наш). Тестийн хуучин нэршил: wholesale=id2, retail=id1.
  */
 export async function createCustomerTypes() {
-  const retail = await prisma.customerType.create({
-    data: { id: 1, typeName: "Retail" },
-  });
-
-  const wholesale = await prisma.customerType.create({
-    data: { id: 2, typeName: "Wholesale" },
-  });
-
-  return { retail, wholesale };
+  const types = [];
+  for (let i = 0; i < CUSTOMER_TYPE_NAMES.length; i++) {
+    const t = await prisma.customerType.upsert({
+      where: { id: i + 1 },
+      update: { typeName: CUSTOMER_TYPE_NAMES[i] },
+      create: { id: i + 1, typeName: CUSTOMER_TYPE_NAMES[i] },
+    });
+    types.push(t);
+  }
+  const zakh = types[0]!;
+  const delguur = types[1]!;
+  const nomin = types[2]!;
+  const cu = types[3]!;
+  const nash = types[4]!;
+  return {
+    zakh,
+    delguur,
+    nomin,
+    cu,
+    nash,
+    retail: zakh,
+    wholesale: delguur,
+  };
 }
 
 /**
