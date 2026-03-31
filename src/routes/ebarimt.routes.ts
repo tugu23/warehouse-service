@@ -82,7 +82,11 @@ router.get(
 
       res.json({
         status: result.success ? "success" : "error",
-        data: result,
+        data: {
+          ...result,
+          // Normalize: POS returns leftLotteries, frontend expects lotteryCount
+          lotteryCount: result.leftLotteries,
+        },
       });
     } catch (error) {
       next(error);
@@ -589,9 +593,10 @@ router.post(
         throw new AppError("Order bill already returned", 400);
       }
 
-      // Return bill in e-Barimt
+      // Return bill in e-Barimt — pass date so POS API receives { id, date }
       const result = await ebarimtService.returnBill(
         order.ebarimtBillId,
+        order.ebarimtDate ? order.ebarimtDate.toISOString() : undefined,
         reason
       );
 
@@ -613,11 +618,19 @@ router.post(
           data: {
             orderId: order.id,
             returnId: result.id,
+            success: true,
             message: result.message,
           },
         });
       } else {
-        throw new AppError(`Failed to return bill: ${result.message}`, 500);
+        // Return POS error message directly to client so UI can show it
+        res.status(422).json({
+          status: "error",
+          message: result.message || "eBarimt буцаалт амжилтгүй",
+          data: {
+            success: false,
+          },
+        });
       }
     } catch (error) {
       next(error);

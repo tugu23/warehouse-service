@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { body, param } from "express-validator";
 import {
   createOrder,
@@ -15,6 +15,8 @@ import {
 } from "../controllers/orders.controller";
 import { authMiddleware, checkRole } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validation.middleware";
+import prisma from "../db/prisma";
+import { AppError } from "../middleware/error.middleware";
 
 const router = Router();
 
@@ -536,5 +538,34 @@ router.get("/market", getMarketOrders);
  *         $ref: '#/components/responses/Unauthorized'
  */
 router.get("/store", getStoreOrders);
+
+// Mark eBarimt as returned after frontend POS DELETE succeeded
+router.post(
+  "/:id/ebarimt-return-done",
+  checkRole(["Admin", "Manager", "StoreSalesperson"]),
+  validate([
+    param("id").isInt().withMessage("Valid order ID is required"),
+    body("returnId").isString().withMessage("returnId is required"),
+  ]),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orderId = parseInt(req.params.id);
+      const { returnId } = req.body;
+
+      const order = await prisma.order.findUnique({ where: { id: orderId } });
+      if (!order) throw new AppError("Order not found", 404);
+      if (!order.ebarimtRegistered) throw new AppError("Order not registered with eBarimt", 400);
+
+      await prisma.order.update({
+        where: { id: orderId },
+        data: { ebarimtReturnId: returnId },
+      });
+
+      res.json({ status: "success", data: { orderId, returnId } });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 export default router;

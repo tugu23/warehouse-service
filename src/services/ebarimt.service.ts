@@ -207,9 +207,10 @@ class EBarimtService {
 
     // Create axios instance for POS API
     // Official API requires Accept: application/soap+xml header
+    // sendData (/rest/sendData) can take up to 120s when sending many bills
     this.client = axios.create({
       baseURL: this.config.apiUrl,
-      timeout: 30000,
+      timeout: 120000,
       headers: {
         "Content-Type": "application/json",
         "Accept": "application/soap+xml",
@@ -394,21 +395,25 @@ class EBarimtService {
     try {
       logger.info("Sending data to central system");
 
-      const response = await this.client.get<SendDataResponse>("/rest/send");
+      const response = await this.client.get<SendDataResponse>("/rest/sendData");
 
-      if (response.data.success) {
+      // POS API returns HTTP 200 with empty body on success
+      const data = response.data || {};
+      const isSuccess = response.status === 200 && (data.success !== false);
+
+      if (isSuccess) {
         logger.info("Data sent successfully to central system", {
-          sentBillCount: response.data.sentBillCount,
-          sentAmount: response.data.sentAmount,
+          sentBillCount: data.sentBillCount,
+          sentAmount: data.sentAmount,
         });
+        return { ...data, success: true };
       } else {
         logger.warn("sendData returned unsuccessful", {
-          errorCode: response.data.errorCode,
-          message: response.data.message,
+          errorCode: data.errorCode,
+          message: data.message,
         });
+        return data;
       }
-
-      return response.data;
     } catch (error) {
       logger.error("Error sending data to central system", {
         error: error instanceof Error ? error.message : String(error),
@@ -534,6 +539,7 @@ class EBarimtService {
     cityTax?: number; // NHAT
     paymentMethod: string;
     districtCode?: string; // For NHAT calculation
+    reportMonth?: string; // YYYYMM — required for supplement receipts (previous month)
   }): Promise<EBarimtResponse> {
     if (!this.isEnabled) {
       logger.warn("E-Barimt service is disabled, skipping registration");
@@ -657,6 +663,7 @@ class EBarimtService {
         customerTin,
         consumerNo,
         type: receiptType,
+        reportMonth: orderData.reportMonth ?? null,
         receipts: [
           {
             totalAmount: orderData.total,
@@ -813,6 +820,7 @@ class EBarimtService {
    */
   async returnReceipt(
     billId: string,
+    date?: string | null,
     reason?: string
   ): Promise<EBarimtResponse> {
     if (!this.isEnabled) {
@@ -824,10 +832,9 @@ class EBarimtService {
     }
 
     try {
-      logger.info("Returning receipt in E-Barimt", { billId, reason });
+      logger.info("Returning receipt in E-Barimt", { billId, date, reason });
 
-      // Official API uses DELETE /rest/receipt
-      // The billId should be passed as query parameter or in request body
+      // Official API uses DELETE /rest/receipt with { id, date } in body
       const response = await this.client.delete<{
         success: boolean;
         message?: string;
@@ -835,8 +842,9 @@ class EBarimtService {
         errorCode?: string;
         errorMessage?: string;
       }>(`/rest/receipt`, {
-        params: {
+        data: {
           id: billId,
+          ...(date ? { date } : {}),
         },
       });
 
@@ -874,16 +882,36 @@ class EBarimtService {
         errorMessage: result.errorMessage,
       };
     } catch (error) {
+      const axiosErr = error as {
+        response?: { status?: number; data?: unknown };
+        message?: string;
+      };
+      const posBody = axiosErr.response?.data;
+      const posStatus = axiosErr.response?.status;
       logger.error("Error returning receipt", {
-        error: error instanceof Error ? error.message : String(error),
         billId,
+        posStatus,
+        posBody,
+        errorMessage: axiosErr.message,
       });
+
+      // Extract human-readable message from POS response body
+      let posMessage: string | undefined;
+      if (posBody && typeof posBody === "object") {
+        const b = posBody as Record<string, unknown>;
+        posMessage =
+          (b.message as string) ||
+          (b.errorMessage as string) ||
+          (b.error as string);
+      } else if (typeof posBody === "string") {
+        posMessage = posBody;
+      }
 
       return {
         success: false,
-        message: "Failed to return receipt",
+        message: posMessage || axiosErr.message || "Failed to return receipt",
         errorCode: "API_ERROR",
-        errorMessage: error instanceof Error ? error.message : "Unknown error",
+        errorMessage: posMessage || axiosErr.message || "Unknown error",
       };
     }
   }
@@ -912,6 +940,7 @@ class EBarimtService {
       if (editRequest.editType === "RETURN") {
         return this.returnReceipt(
           editRequest.originalBillId,
+          undefined,
           editRequest.reason || "Баримт буцаах"
         );
       }
@@ -1033,10 +1062,14 @@ class EBarimtService {
         originalDate: orderData.originalDate,
       });
 
+      // Calculate reportMonth as YYYYMM of the original transaction month
+      const reportMonth = `${originalDate.getFullYear()}${String(originalDate.getMonth() + 1).padStart(2, "0")}`;
+
       // Register as supplement
       const result = await this.registerReceipt({
         ...orderData,
         cityTax: 0, // Will be calculated in registerReceipt
+        reportMonth,
       });
 
       return result;
@@ -1340,13 +1373,14 @@ class EBarimtService {
    */
   async returnBill(
     billId: string,
+    date?: string | null,
     reason?: string
   ): Promise<{
     success: boolean;
     id?: string;
     message?: string;
   }> {
-    const result = await this.returnReceipt(billId, reason);
+    const result = await this.returnReceipt(billId, date, reason);
 
     if (result.success && result.data) {
       return {
