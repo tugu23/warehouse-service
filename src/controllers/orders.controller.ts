@@ -101,13 +101,35 @@ export const createOrder = async (
           );
         }
 
-        // Determine price independent of customer/org selection.
-        // Market orders use wholesale; Store orders use retail.
-        let unitPrice: Prisma.Decimal | null =
-          orderType === "Market" ? product.priceWholesale : product.priceRetail;
-
-        // Fallback if one side is missing
-        if (!unitPrice) unitPrice = product.priceRetail || product.priceWholesale;
+        // Үнийн горим: updateOrder-той ижил (гараар үнэ, жижиглэнгийн/бөөний, эсвэл orderType-оор автомат)
+        const mode = (item.priceMode || "auto") as
+          | "auto"
+          | "wholesale"
+          | "retail"
+          | "custom";
+        let unitPrice: Prisma.Decimal | null = null;
+        if (mode === "custom") {
+          const cp = Number(item.customUnitPrice ?? item.unitPrice);
+          if (!Number.isFinite(cp) || cp <= 0) {
+            throw new AppError(
+              `${product.nameMongolian} барааны гараар оруулсан үнэ буруу байна`,
+              400
+            );
+          }
+          unitPrice = new Prisma.Decimal(cp);
+        } else if (mode === "wholesale") {
+          unitPrice = product.priceWholesale || product.priceRetail;
+        } else if (mode === "retail") {
+          unitPrice = product.priceRetail || product.priceWholesale;
+        } else {
+          unitPrice =
+            orderType === "Market"
+              ? product.priceWholesale
+              : product.priceRetail;
+          if (!unitPrice) {
+            unitPrice = product.priceRetail || product.priceWholesale;
+          }
+        }
 
         if (!unitPrice) {
           throw new AppError(
