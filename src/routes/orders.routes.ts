@@ -267,7 +267,7 @@ router.put(
       .withMessage("Quantity must be at least 1"),
     body("items.*.priceMode")
       .optional()
-      .isIn(["auto", "wholesale", "retail", "custom"])
+      .isIn(["auto", "wholesale", "retail", "custom", "customerType"])
       .withMessage("Invalid price mode"),
     body("items.*.customUnitPrice")
       .optional({ nullable: true })

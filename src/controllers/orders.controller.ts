@@ -101,12 +101,13 @@ export const createOrder = async (
           );
         }
 
-        // Үнийн горим: updateOrder-той ижил (гараар үнэ, жижиглэнгийн/бөөний, эсвэл orderType-оор автомат)
+        // Үнийн горим: гараар, төрлийн үнэ (product_prices), жижиглэн/бөөний, эсвэл orderType-оор автомат
         const mode = (item.priceMode || "auto") as
           | "auto"
           | "wholesale"
           | "retail"
-          | "custom";
+          | "custom"
+          | "customerType";
         let unitPrice: Prisma.Decimal | null = null;
         if (mode === "custom") {
           const cp = Number(item.customUnitPrice ?? item.unitPrice);
@@ -117,6 +118,30 @@ export const createOrder = async (
             );
           }
           unitPrice = new Prisma.Decimal(cp);
+        } else if (mode === "customerType") {
+          const ctId = customer.customerTypeId;
+          if (ctId == null) {
+            throw new AppError(
+              `${product.nameMongolian}: харилцагчид төрөл сонгогдоогүй тул төрлийн үнэ ашиглах боломжгүй`,
+              400
+            );
+          }
+          const pp = await tx.productPrice.findUnique({
+            where: {
+              productId_customerTypeId: {
+                productId: product.id,
+                customerTypeId: ctId,
+              },
+            },
+          });
+          const pNum = pp ? Number(pp.price) : NaN;
+          if (!pp || !Number.isFinite(pNum) || pNum <= 0) {
+            throw new AppError(
+              `${product.nameMongolian} бараанд энэ харилцагчийн төрөлд үнэ тохируулаагүй (Бараа → Үнэ удирдлага)`,
+              400
+            );
+          }
+          unitPrice = pp.price;
         } else if (mode === "wholesale") {
           unitPrice = product.priceWholesale || product.priceRetail;
         } else if (mode === "retail") {
@@ -497,6 +522,9 @@ export const updateOrder = async (
     }
 
     const updatedOrder = await prisma.$transaction(async (tx) => {
+      const customer = await tx.customer.findUnique({ where: { id: customerIdNum } });
+      if (!customer) throw new AppError(req.t.customers.notFound, 404);
+
       for (const oldItem of existingOrder.orderItems) {
         await tx.product.update({
           where: { id: oldItem.productId },
@@ -516,12 +544,41 @@ export const updateOrder = async (
           throw new AppError(`${product.nameMongolian} барааны үлдэгдэл хүрэлцэхгүй байна`, 400);
         }
 
-        const mode = (item.priceMode || "auto") as "auto" | "wholesale" | "retail" | "custom";
+        const mode = (item.priceMode || "auto") as
+          | "auto"
+          | "wholesale"
+          | "retail"
+          | "custom"
+          | "customerType";
         let unitPrice: Prisma.Decimal | null = null;
         if (mode === "custom") {
           const cp = Number(item.customUnitPrice ?? item.unitPrice);
           if (!Number.isFinite(cp) || cp <= 0) throw new AppError(`${product.nameMongolian} барааны үнэ буруу`, 400);
           unitPrice = new Prisma.Decimal(cp);
+        } else if (mode === "customerType") {
+          const ctId = customer.customerTypeId;
+          if (ctId == null) {
+            throw new AppError(
+              `${product.nameMongolian}: харилцагчид төрөл сонгогдоогүй тул төрлийн үнэ ашиглах боломжгүй`,
+              400
+            );
+          }
+          const pp = await tx.productPrice.findUnique({
+            where: {
+              productId_customerTypeId: {
+                productId: product.id,
+                customerTypeId: ctId,
+              },
+            },
+          });
+          const pNum = pp ? Number(pp.price) : NaN;
+          if (!pp || !Number.isFinite(pNum) || pNum <= 0) {
+            throw new AppError(
+              `${product.nameMongolian} бараанд энэ харилцагчийн төрөлд үнэ тохируулаагүй (Бараа → Үнэ удирдлага)`,
+              400
+            );
+          }
+          unitPrice = pp.price;
         } else if (mode === "wholesale") {
           unitPrice = product.priceWholesale || product.priceRetail;
         } else if (mode === "retail") {
