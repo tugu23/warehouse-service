@@ -41,8 +41,7 @@ describe("Products API", () => {
           productCode: "TEST-003",
           supplierId: testData.supplier.id,
           stockQuantity: 75,
-          priceWholesale: 1500,
-          priceRetail: 2000,
+          defaultPrice: 2000,
         })
         .expect(201);
 
@@ -83,6 +82,23 @@ describe("Products API", () => {
 
       expect(response.body.status).toBe("success");
       expect(response.body.data.product.isActive).toBe(true);
+    });
+
+    it("should force product inactive when both stock and price are missing", async () => {
+      const response = await request(app)
+        .post("/api/products")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          nameMongolian: "Үнэ ба үлдэгдэлгүй бараа",
+          productCode: "TEST-NO-STOCK-NO-PRICE",
+          supplierId: testData.supplier.id,
+          stockQuantity: 0,
+          isActive: true,
+        })
+        .expect(201);
+
+      expect(response.body.status).toBe("success");
+      expect(response.body.data.product.isActive).toBe(false);
     });
 
     it("should create product as manager", async () => {
@@ -150,7 +166,7 @@ describe("Products API", () => {
       expect(product).toHaveProperty("id");
       expect(product).toHaveProperty("nameMongolian");
       expect(product).toHaveProperty("stockQuantity");
-      expect(product).toHaveProperty("priceRetail");
+      expect(product).toHaveProperty("defaultPrice");
       expect(product).toHaveProperty("isActive");
       expect(typeof product.isActive).toBe("boolean");
     });
@@ -191,13 +207,13 @@ describe("Products API", () => {
         .send({
           nameMongolian: "Шинэчлэгдсэн бараа",
           nameEnglish: "Updated Product",
-          priceRetail: 1800,
+          defaultPrice: 1800,
         })
         .expect(200);
 
       expect(response.body.status).toBe("success");
       expect(response.body.data.product.nameEnglish).toBe("Updated Product");
-      expect(parseFloat(response.body.data.product.priceRetail)).toBe(1800);
+      expect(parseFloat(response.body.data.product.defaultPrice)).toBe(1800);
     });
 
     it("should toggle product isActive status", async () => {
@@ -229,11 +245,11 @@ describe("Products API", () => {
         .put(`/api/products/${testData.products.product2.id}`)
         .set("Authorization", `Bearer ${managerToken}`)
         .send({
-          priceWholesale: 2200,
+          defaultPrice: 2200,
         })
         .expect(200);
 
-      expect(parseFloat(response.body.data.product.priceWholesale)).toBe(2200);
+      expect(parseFloat(response.body.data.product.defaultPrice)).toBe(2200);
     });
 
     it("should not allow agent to update product", async () => {

@@ -234,8 +234,7 @@ async function main() {
         categoryId: beverageCategory.id,
         stockQuantity: 100,
         unitsPerBox: 24,
-        priceWholesale: 500,
-        priceRetail: 700,
+        defaultPrice: 700,
         pricePerBox: 12000,
         netWeight: 0.5,
         grossWeight: 0.6,
@@ -250,8 +249,7 @@ async function main() {
         categoryId: dairyCategory.id,
         stockQuantity: 50,
         unitsPerBox: 12,
-        priceWholesale: 1500,
-        priceRetail: 2000,
+        defaultPrice: 2000,
         pricePerBox: 18000,
         netWeight: 1.0,
         grossWeight: 1.1,
@@ -266,8 +264,7 @@ async function main() {
         categoryId: bakeryCategory.id,
         stockQuantity: 75,
         unitsPerBox: 20,
-        priceWholesale: 800,
-        priceRetail: 1000,
+        defaultPrice: 1000,
         pricePerBox: 16000,
         netWeight: 0.4,
         grossWeight: 0.45,
@@ -280,40 +277,10 @@ async function main() {
   // Get created products for batches
   const products = await prisma.product.findMany();
 
-  // Create sample product batches with expiry dates
-  console.log("Creating sample product batches...");
+  console.log("Creating inventory balances for sample products...");
   const now = new Date();
-  const futureDate = new Date();
-  futureDate.setMonth(futureDate.getMonth() + 6);
 
   for (const product of products) {
-    await prisma.productBatch.create({
-      data: {
-        productId: product.id,
-        batchNumber: `BATCH-${product.productCode}-001`,
-        arrivalDate: now,
-        expiryDate: futureDate,
-        quantity: Math.floor(product.stockQuantity / 2),
-        costPrice: product.priceWholesale || product.priceRetail,
-        supplierInvoice: `INV-${product.productCode}-2024-001`,
-        isActive: true,
-      },
-    });
-
-    await prisma.productBatch.create({
-      data: {
-        productId: product.id,
-        batchNumber: `BATCH-${product.productCode}-002`,
-        arrivalDate: now,
-        expiryDate: new Date(futureDate.getTime() + 30 * 24 * 60 * 60 * 1000), // +1 month from first batch
-        quantity: Math.floor(product.stockQuantity / 2),
-        costPrice: product.priceWholesale || product.priceRetail,
-        supplierInvoice: `INV-${product.productCode}-2024-002`,
-        isActive: true,
-      },
-    });
-
-    // Create inventory balance for current month
     await prisma.inventoryBalance.create({
       data: {
         productId: product.id,
@@ -327,9 +294,7 @@ async function main() {
     });
   }
 
-  console.log(
-    "Sample product batches and inventory balances created successfully"
-  );
+  console.log("Sample inventory balances created successfully");
 
   // Get the sales agent for customer assignment
   const salesAgent = await prisma.employee.findFirst({

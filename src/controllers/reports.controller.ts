@@ -178,7 +178,7 @@ export const getInventoryReport = async (
         (sum, product) =>
           sum +
           product.stockQuantity *
-            parseFloat(product.priceWholesale?.toString() || "0"),
+            parseFloat(product.defaultPrice?.toString() || "0"),
         0
       ),
       lowStockProducts: products.filter((p) => p.stockQuantity < 10).length,
@@ -189,11 +189,10 @@ export const getInventoryReport = async (
         category: product.category?.nameMongolian || "N/A",
         supplier: product.supplier?.name || "N/A",
         stockQuantity: product.stockQuantity,
-        priceWholesale: parseFloat(product.priceWholesale?.toString() || "0"),
-        priceRetail: parseFloat(product.priceRetail?.toString() || "0"),
+        defaultPrice: parseFloat(product.defaultPrice?.toString() || "0"),
         stockValue:
           product.stockQuantity *
-          parseFloat(product.priceWholesale?.toString() || "0"),
+          parseFloat(product.defaultPrice?.toString() || "0"),
       })),
     };
 
@@ -914,7 +913,7 @@ export const exportInventoryToExcel = async (
         (sum, product) =>
           sum +
           product.stockQuantity *
-            parseFloat(product.priceWholesale?.toString() || "0"),
+            parseFloat(product.defaultPrice?.toString() || "0"),
         0
       ),
       lowStockProducts: products.filter((p) => p.stockQuantity < 10).length,
@@ -925,11 +924,10 @@ export const exportInventoryToExcel = async (
         category: product.category?.nameMongolian || "N/A",
         supplier: product.supplier?.name || "N/A",
         stockQuantity: product.stockQuantity,
-        priceWholesale: parseFloat(product.priceWholesale?.toString() || "0"),
-        priceRetail: parseFloat(product.priceRetail?.toString() || "0"),
+        defaultPrice: parseFloat(product.defaultPrice?.toString() || "0"),
         stockValue:
           product.stockQuantity *
-          parseFloat(product.priceWholesale?.toString() || "0"),
+          parseFloat(product.defaultPrice?.toString() || "0"),
       })),
     };
 

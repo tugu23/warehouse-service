@@ -8,6 +8,8 @@ import { addDays, isBefore, startOfDay } from "date-fns";
 import vatService from "../services/vat.service";
 import pdfService from "../services/pdf-pdfkit.service";
 import ebarimtService from "../services/ebarimt.service";
+import { resolveOrderItemUnitPrice } from "../utils/orderPricing";
+import { shouldForceInactiveProduct } from "../utils/productAvailability";
 
 export const createOrder = async (
   req: Request,
@@ -85,12 +87,26 @@ export const createOrder = async (
       for (const item of items) {
         const product = await tx.product.findUnique({
           where: { id: item.productId },
+          include: {
+            prices: {
+              select: {
+                price: true,
+              },
+            },
+          },
         });
 
         if (!product) {
           throw new AppError(
             `ID ${item.productId} дугаартай бараа олдсонгүй`,
             404
+          );
+        }
+
+        if (product.isActive === false || shouldForceInactiveProduct(product)) {
+          throw new AppError(
+            `${product.nameMongolian} бараа идэвхгүй тул захиалгад оруулах боломжгүй`,
+            400
           );
         }
 
@@ -101,67 +117,21 @@ export const createOrder = async (
           );
         }
 
-        // Үнийн горим: гараар, төрлийн үнэ (product_prices), жижиглэн/бөөний, эсвэл orderType-оор автомат
         const mode = (item.priceMode || "auto") as
           | "auto"
           | "wholesale"
           | "retail"
+          | "defaultPrice"
           | "custom"
           | "customerType";
-        let unitPrice: Prisma.Decimal | null = null;
-        if (mode === "custom") {
-          const cp = Number(item.customUnitPrice ?? item.unitPrice);
-          if (!Number.isFinite(cp) || cp <= 0) {
-            throw new AppError(
-              `${product.nameMongolian} барааны гараар оруулсан үнэ буруу байна`,
-              400
-            );
-          }
-          unitPrice = new Prisma.Decimal(cp);
-        } else if (mode === "customerType") {
-          const ctId = customer.customerTypeId;
-          if (ctId == null) {
-            throw new AppError(
-              `${product.nameMongolian}: харилцагчид төрөл сонгогдоогүй тул төрлийн үнэ ашиглах боломжгүй`,
-              400
-            );
-          }
-          const pp = await tx.productPrice.findUnique({
-            where: {
-              productId_customerTypeId: {
-                productId: product.id,
-                customerTypeId: ctId,
-              },
-            },
-          });
-          const pNum = pp ? Number(pp.price) : NaN;
-          if (!pp || !Number.isFinite(pNum) || pNum <= 0) {
-            throw new AppError(
-              `${product.nameMongolian} бараанд энэ харилцагчийн төрөлд үнэ тохируулаагүй (Бараа → Үнэ удирдлага)`,
-              400
-            );
-          }
-          unitPrice = pp.price;
-        } else if (mode === "wholesale") {
-          unitPrice = product.priceWholesale || product.priceRetail;
-        } else if (mode === "retail") {
-          unitPrice = product.priceRetail || product.priceWholesale;
-        } else {
-          unitPrice =
-            orderType === "Market"
-              ? product.priceWholesale
-              : product.priceRetail;
-          if (!unitPrice) {
-            unitPrice = product.priceRetail || product.priceWholesale;
-          }
-        }
 
-        if (!unitPrice) {
-          throw new AppError(
-            `${product.nameMongolian} барааны үнэ тохируулаагүй байна`,
-            400
-          );
-        }
+        const unitPrice = await resolveOrderItemUnitPrice(tx, {
+          product,
+          customer,
+          mode,
+          item,
+          productName: product.nameMongolian,
+        });
 
         const itemTotal = new Prisma.Decimal(unitPrice.toString()).mul(
           item.quantity
@@ -538,8 +508,23 @@ export const updateOrder = async (
       const orderItemsData: { productId: number; quantity: number; unitPrice: Prisma.Decimal }[] = [];
 
       for (const item of items) {
-        const product = await tx.product.findUnique({ where: { id: item.productId } });
+        const product = await tx.product.findUnique({
+          where: { id: item.productId },
+          include: {
+            prices: {
+              select: {
+                price: true,
+              },
+            },
+          },
+        });
         if (!product) throw new AppError(`ID ${item.productId} дугаартай бараа олдсонгүй`, 404);
+        if (product.isActive === false || shouldForceInactiveProduct(product)) {
+          throw new AppError(
+            `${product.nameMongolian} бараа идэвхгүй тул захиалгад оруулах боломжгүй`,
+            400
+          );
+        }
         if (product.stockQuantity < item.quantity) {
           throw new AppError(`${product.nameMongolian} барааны үлдэгдэл хүрэлцэхгүй байна`, 400);
         }
@@ -548,47 +533,17 @@ export const updateOrder = async (
           | "auto"
           | "wholesale"
           | "retail"
+          | "defaultPrice"
           | "custom"
           | "customerType";
-        let unitPrice: Prisma.Decimal | null = null;
-        if (mode === "custom") {
-          const cp = Number(item.customUnitPrice ?? item.unitPrice);
-          if (!Number.isFinite(cp) || cp <= 0) throw new AppError(`${product.nameMongolian} барааны үнэ буруу`, 400);
-          unitPrice = new Prisma.Decimal(cp);
-        } else if (mode === "customerType") {
-          const ctId = customer.customerTypeId;
-          if (ctId == null) {
-            throw new AppError(
-              `${product.nameMongolian}: харилцагчид төрөл сонгогдоогүй тул төрлийн үнэ ашиглах боломжгүй`,
-              400
-            );
-          }
-          const pp = await tx.productPrice.findUnique({
-            where: {
-              productId_customerTypeId: {
-                productId: product.id,
-                customerTypeId: ctId,
-              },
-            },
-          });
-          const pNum = pp ? Number(pp.price) : NaN;
-          if (!pp || !Number.isFinite(pNum) || pNum <= 0) {
-            throw new AppError(
-              `${product.nameMongolian} бараанд энэ харилцагчийн төрөлд үнэ тохируулаагүй (Бараа → Үнэ удирдлага)`,
-              400
-            );
-          }
-          unitPrice = pp.price;
-        } else if (mode === "wholesale") {
-          unitPrice = product.priceWholesale || product.priceRetail;
-        } else if (mode === "retail") {
-          unitPrice = product.priceRetail || product.priceWholesale;
-        } else {
-          unitPrice = orderType === "Market" ? product.priceWholesale : product.priceRetail;
-          if (!unitPrice) unitPrice = product.priceRetail || product.priceWholesale;
-        }
 
-        if (!unitPrice) throw new AppError(`${product.nameMongolian} барааны үнэ тохируулаагүй байна`, 400);
+        const unitPrice = await resolveOrderItemUnitPrice(tx, {
+          product,
+          customer,
+          mode,
+          item,
+          productName: product.nameMongolian,
+        });
 
         subtotalAmount = subtotalAmount.add(new Prisma.Decimal(unitPrice.toString()).mul(item.quantity));
         orderItemsData.push({ productId: item.productId, quantity: item.quantity, unitPrice });
@@ -699,7 +654,18 @@ export const updateOrderEbarimt = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const { ebarimtId, ebarimtBillId, ebarimtDate } = req.body;
+    const { ebarimtId, ebarimtBillId, ebarimtDate, ebarimtReceiptType, ebarimtType } =
+      req.body as {
+        ebarimtId?: string;
+        ebarimtBillId?: string;
+        ebarimtDate?: string;
+        ebarimtReceiptType?: string;
+        ebarimtType?: string;
+      };
+
+    const rawKind = ebarimtReceiptType ?? ebarimtType;
+    const receiptKind =
+      rawKind === "B2B" || rawKind === "B2C" ? rawKind : undefined;
 
     const order = await prisma.order.findUnique({
       where: { id: parseInt(id) },
@@ -716,6 +682,7 @@ export const updateOrderEbarimt = async (
         ebarimtBillId,
         ebarimtRegistered: true,
         ebarimtDate: ebarimtDate ? new Date(ebarimtDate) : new Date(),
+        ...(receiptKind ? { ebarimtReceiptType: receiptKind } : {}),
       },
     });
 

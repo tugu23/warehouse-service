@@ -267,7 +267,14 @@ router.put(
       .withMessage("Quantity must be at least 1"),
     body("items.*.priceMode")
       .optional()
-      .isIn(["auto", "wholesale", "retail", "custom", "customerType"])
+      .isIn([
+        "auto",
+        "wholesale",
+        "retail",
+        "defaultPrice",
+        "custom",
+        "customerType",
+      ])
       .withMessage("Invalid price mode"),
     body("items.*.customUnitPrice")
       .optional({ nullable: true })
@@ -552,16 +559,58 @@ router.post(
       const orderId = parseInt(req.params.id);
       const { returnId } = req.body;
 
-      const order = await prisma.order.findUnique({ where: { id: orderId } });
-      if (!order) throw new AppError("Order not found", 404);
-      if (!order.ebarimtRegistered) throw new AppError("Order not registered with eBarimt", 400);
+      const result = await prisma.$transaction(async (tx) => {
+        const order = await tx.order.findUnique({
+          where: { id: orderId },
+          include: { orderItems: true },
+        });
 
-      await prisma.order.update({
-        where: { id: orderId },
-        data: { ebarimtReturnId: returnId },
+        if (!order) throw new AppError("Order not found", 404);
+        if (!order.ebarimtRegistered) {
+          throw new AppError("Order not registered with eBarimt", 400);
+        }
+
+        if (order.ebarimtReturnId) {
+          if (order.ebarimtReturnId !== returnId) {
+            throw new AppError("Order eBarimt already returned", 400);
+          }
+
+          return {
+            orderId,
+            returnId,
+            status: order.status,
+            restocked: false,
+          };
+        }
+
+        for (const item of order.orderItems) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: {
+              stockQuantity: {
+                increment: item.quantity,
+              },
+            },
+          });
+        }
+
+        const updatedOrder = await tx.order.update({
+          where: { id: orderId },
+          data: {
+            ebarimtReturnId: returnId,
+            status: "Cancelled",
+          },
+        });
+
+        return {
+          orderId,
+          returnId,
+          status: updatedOrder.status,
+          restocked: true,
+        };
       });
 
-      res.json({ status: "success", data: { orderId, returnId } });
+      res.json({ status: "success", data: result });
     } catch (error) {
       next(error);
     }

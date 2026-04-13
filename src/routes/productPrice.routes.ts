@@ -2,9 +2,13 @@ import express from 'express';
 import {
   getProductPrices,
   getAllPrices,
+  getProductPriceById,
+  createProductPrice,
   upsertProductPrice,
+  updateProductPriceById,
   bulkUpdateProductPrices,
   deleteProductPrice,
+  deleteProductPriceById,
   copyProductPrices,
   adjustProductPrices,
 } from '../controllers/productPrice.controller';
@@ -15,30 +19,19 @@ const router = express.Router();
 // Get all prices (admin view)
 router.get('/', authenticate, getAllPrices);
 
-// Get prices for a specific product
+// Frontend compatibility routes
+router.get('/product/:productId', authenticate, getProductPrices);
+router.get('/:id', authenticate, getProductPriceById);
+router.post('/', authenticate, createProductPrice);
+router.put('/:id', authenticate, updateProductPriceById);
+router.delete('/:id', authenticate, deleteProductPriceById);
+
+// Nested routes
 router.get('/products/:productId/prices', authenticate, getProductPrices);
-
-// Create or update a single price
 router.post('/products/:productId/prices', authenticate, upsertProductPrice);
-
-// Bulk update prices for a product
 router.put('/products/:productId/prices/bulk', authenticate, bulkUpdateProductPrices);
-
-// Delete a price
-router.delete(
-  '/products/:productId/prices/:customerTypeId',
-  authenticate,
-  deleteProductPrice
-);
-
-// Copy prices from one product to another
-router.post(
-  '/products/:sourceProductId/prices/copy/:targetProductId',
-  authenticate,
-  copyProductPrices
-);
-
-// Adjust prices by percentage
+router.delete('/products/:productId/prices/:customerTypeId', authenticate, deleteProductPrice);
+router.post('/products/:sourceProductId/prices/copy/:targetProductId', authenticate, copyProductPrices);
 router.post('/products/:productId/prices/adjust', authenticate, adjustProductPrices);
 
 export default router;

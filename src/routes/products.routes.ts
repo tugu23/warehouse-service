@@ -45,11 +45,7 @@ const router = Router();
  *         stockQuantity:
  *           type: integer
  *           example: 100
- *         priceWholesale:
- *           type: number
- *           format: decimal
- *           example: 500
- *         priceRetail:
+ *         defaultPrice:
  *           type: number
  *           format: decimal
  *           example: 700
@@ -97,10 +93,7 @@ router.use(authMiddleware);
  *               stockQuantity:
  *                 type: integer
  *                 example: 50
- *               priceWholesale:
- *                 type: number
- *                 example: 1500
- *               priceRetail:
+ *               defaultPrice:
  *                 type: number
  *                 example: 2000
  *               isActive:
@@ -139,8 +132,7 @@ router.post(
       .optional()
       .isInt()
       .withMessage("Stock quantity must be a number"),
-    body("priceWholesale").optional().isDecimal(),
-    body("priceRetail").optional().isDecimal(),
+    body("defaultPrice").optional().isDecimal(),
     body("isActive").optional().isBoolean(),
   ]),
   createProduct
@@ -305,9 +297,7 @@ router.get(
  *                 type: string
  *               supplierId:
  *                 type: integer
- *               priceWholesale:
- *                 type: number
- *               priceRetail:
+ *               defaultPrice:
  *                 type: number
  *               isActive:
  *                 type: boolean
@@ -327,8 +317,7 @@ router.put(
     body("productCode").optional().isString(),
     body("supplierId").optional().isInt(),
     body("categoryId").optional().isInt(),
-    body("priceWholesale").optional().isDecimal(),
-    body("priceRetail").optional().isDecimal(),
+    body("defaultPrice").optional().isDecimal(),
     body("isActive").optional().isBoolean(),
   ]),
   updateProduct

@@ -1,6 +1,6 @@
 /**
- * Seed script to import product expiration/batch data from vldegdel.json
- * This integrates manufacturing dates, expiration dates, and storage durations with products
+ * Seed script to import stock quantities from vldegdel.json (legacy "үлдэгдэл").
+ * ProductBatch model was removed from schema — only product.stockQuantity is updated.
  */
 
 import { PrismaClient } from "@prisma/client";
@@ -23,20 +23,8 @@ function mapRowToObject(columns: string[], row: any[]): any {
   return obj;
 }
 
-function parseDate(dateStr: any): Date | null {
-  if (!dateStr || dateStr === null || dateStr === "") return null;
-  try {
-    const date = new Date(dateStr);
-    return isNaN(date.getTime()) ? null : date;
-  } catch {
-    return null;
-  }
-}
-
-async function seedProductBatches() {
-  console.log(
-    "\n📦 Importing product expiration data from vldegdel.json...\n"
-  );
+async function seedVldegdelStock() {
+  console.log("\n📦 Importing stock from vldegdel.json...\n");
 
   const vldegdelPath = path.join(__dirname, "parsed-data", "vldegdel.json");
   const vldegdelRaw = fs.readFileSync(vldegdelPath, "utf-8");
@@ -68,40 +56,8 @@ async function seedProductBatches() {
 
     try {
       const productId = obj.baraanii_id;
-      const quantity = obj.too || 0;
-      const manufacturingDate = parseDate(obj.vildverlesen_hugatsaa);
-      const expirationDate = parseDate(obj.duusah_hugatsaa);
-      const storageDuration = obj.hadgalah_hugatsaa || 0;
+      const quantity = Number(obj.too) || 0;
 
-      // Create batch record if we have valid date information
-      if (manufacturingDate || expirationDate) {
-        const batchNumber = `BATCH-${obj.id}-${productId}`;
-
-        await prisma.productBatch.upsert({
-          where: {
-            productId_batchNumber: {
-              productId: productId,
-              batchNumber: batchNumber,
-            },
-          },
-          update: {
-            quantity: quantity,
-            arrivalDate: manufacturingDate || new Date(),
-            expiryDate: expirationDate,
-            isActive: expirationDate ? expirationDate > new Date() : true,
-          },
-          create: {
-            productId: productId,
-            batchNumber: batchNumber,
-            quantity: quantity,
-            arrivalDate: manufacturingDate || new Date(),
-            expiryDate: expirationDate,
-            isActive: expirationDate ? expirationDate > new Date() : true,
-          },
-        });
-      }
-
-      // Update product stock quantity if there's a quantity
       if (quantity > 0) {
         await prisma.product.update({
           where: { id: productId },
@@ -138,10 +94,10 @@ async function seedProductBatches() {
 }
 
 async function main() {
-  console.log("🚀 Бүтээгдэхүүний үлдэгдэл, хугацаа мэдээллийг оруулж байна...\n");
+  console.log("🚀 Бүтээгдэхүүний үлдэгдэл (stock_quantity) оруулж байна...\n");
 
   try {
-    await seedProductBatches();
+    await seedVldegdelStock();
     console.log("\n🎉 Амжилттай дууслаа!");
   } catch (error) {
     console.error("❌ Алдаа гарлаа:", error);

@@ -65,8 +65,8 @@ model Product {
   productCode       String?                 @unique @map("product_code") @db.VarChar(100)
   supplierId        Int?                    @map("supplier_id")
   stockQuantity     Int                     @default(0) @map("stock_quantity")
-  priceWholesale    Decimal?                @map("price_wholesale") @db.Decimal(10, 2)
-  priceRetail       Decimal?                @map("price_retail") @db.Decimal(10, 2)
+  // Төрлийн тусгай үнэ байхгүй үед ашиглах үндсэн үнэ
+  defaultPrice      Decimal?                @map("default_price") @db.Decimal(10, 2)
   createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
   categoryId        Int?                    @map("category_id")
   nameKorean        String?                 @map("name_korean") @db.VarChar(255)
@@ -154,6 +154,8 @@ model Order {
   ebarimtRegistered Boolean       @default(false) @map("ebarimt_registered")
   ebarimtDate       DateTime?     @map("ebarimt_date") @db.Timestamptz(3)
   ebarimtReturnId   String?       @map("ebarimt_return_id") @db.VarChar(100)
+  // POS/И-баримт: B2B | B2C (хэвлэлтийн үед)
+  ebarimtReceiptType String?      @map("ebarimt_receipt_type") @db.VarChar(10)
   orderNumber       String?       @unique @map("order_number") @db.VarChar(50)
   orderItems        OrderItem[]
   agent             Employee      @relation("AgentOrders", fields: [agentId], references: [id])

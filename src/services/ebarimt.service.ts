@@ -191,7 +191,7 @@ class EBarimtService {
     // Official eBarimt API runs on localhost:7080
     this.config = {
       apiUrl: process.env.EBARIMT_API_URL || "http://192.168.1.213:7080",
-      posNo: process.env.EBARIMT_POS_NO || "10012516",
+      posNo: process.env.EBARIMT_POS_NO || "10014457",
       merchantTin: process.env.EBARIMT_MERCHANT_TIN || process.env.EBARIMT_REG_NO || "37900846788",
       apiKey: process.env.EBARIMT_API_KEY,
       districtCode: process.env.EBARIMT_DISTRICT_CODE || "2506", // Default: Сүхбаатар (4-digit)

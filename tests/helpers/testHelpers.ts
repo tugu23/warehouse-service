@@ -152,8 +152,7 @@ export async function createTestProducts(supplierId: number) {
       productCode: "TEST-001",
       supplierId,
       stockQuantity: 100,
-      priceWholesale: 1000,
-      priceRetail: 1500,
+      defaultPrice: 1500,
     },
   });
 
@@ -164,8 +163,7 @@ export async function createTestProducts(supplierId: number) {
       productCode: "TEST-002",
       supplierId,
       stockQuantity: 50,
-      priceWholesale: 2000,
-      priceRetail: 2500,
+      defaultPrice: 2500,
     },
   });
 

@@ -2,6 +2,78 @@ import { Request, Response, NextFunction } from 'express';
 import prisma from '../db/prisma';
 import { AppError } from '../middleware/error.middleware';
 import logger from '../utils/logger';
+import { shouldForceInactiveProduct } from '../utils/productAvailability';
+
+const productPriceDetailInclude = {
+  customerType: true,
+  product: {
+    select: {
+      id: true,
+      nameMongolian: true,
+      nameEnglish: true,
+      productCode: true,
+    },
+  },
+} as const;
+
+async function upsertProductPriceRecord(
+  productId: number,
+  customerTypeId: number,
+  price: number
+) {
+  const [product, customerType] = await Promise.all([
+    prisma.product.findUnique({ where: { id: productId } }),
+    prisma.customerType.findUnique({ where: { id: customerTypeId } }),
+  ]);
+
+  if (!product) {
+    throw new AppError('Product not found', 404);
+  }
+
+  if (!customerType) {
+    throw new AppError('Customer type not found', 404);
+  }
+
+  return prisma.productPrice.upsert({
+    where: {
+      productId_customerTypeId: {
+        productId,
+        customerTypeId,
+      },
+    },
+    update: {
+      price,
+    },
+    create: {
+      productId,
+      customerTypeId,
+      price,
+    },
+    include: productPriceDetailInclude,
+  });
+}
+
+async function syncForcedInactiveFlag(productId: number): Promise<void> {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    include: {
+      prices: {
+        select: {
+          price: true,
+        },
+      },
+    },
+  });
+
+  if (!product) return;
+
+  if (shouldForceInactiveProduct(product) && product.isActive !== false) {
+    await prisma.product.update({
+      where: { id: productId },
+      data: { isActive: false },
+    });
+  }
+}
 
 /**
  * Get all prices for a specific product
@@ -19,16 +91,7 @@ export const getProductPrices = async (
       where: {
         productId: parseInt(productId),
       },
-      include: {
-        customerType: true,
-        product: {
-          select: {
-            id: true,
-            nameMongolian: true,
-            nameEnglish: true,
-          },
-        },
-      },
+      include: productPriceDetailInclude,
       orderBy: {
         customerTypeId: 'asc',
       },
@@ -38,6 +101,7 @@ export const getProductPrices = async (
       status: 'success',
       data: {
         prices,
+        productPrices: prices,
         count: prices.length,
       },
     });
@@ -63,9 +127,7 @@ export const getAllPrices = async (
     const customerTypeId = req.query.customerTypeId
       ? parseInt(req.query.customerTypeId as string)
       : undefined;
-    const productId = req.query.productId
-      ? parseInt(req.query.productId as string)
-      : undefined;
+    const productId = req.query.productId ? parseInt(req.query.productId as string) : undefined;
 
     const where: any = {};
 
@@ -82,21 +144,8 @@ export const getAllPrices = async (
         where,
         skip,
         take: limit,
-        include: {
-          customerType: true,
-          product: {
-            select: {
-              id: true,
-              nameMongolian: true,
-              nameEnglish: true,
-              productCode: true,
-            },
-          },
-        },
-        orderBy: [
-          { productId: 'asc' },
-          { customerTypeId: 'asc' },
-        ],
+        include: productPriceDetailInclude,
+        orderBy: [{ productId: 'asc' }, { customerTypeId: 'asc' }],
       }),
       prisma.productPrice.count({ where }),
     ]);
@@ -105,12 +154,81 @@ export const getAllPrices = async (
       status: 'success',
       data: {
         prices,
+        productPrices: prices,
         pagination: {
           page,
           limit,
           total,
           totalPages: Math.ceil(total / limit),
         },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get a single price by ID
+ * GET /api/product-prices/:id
+ */
+export const getProductPriceById = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id);
+
+    const productPrice = await prisma.productPrice.findUnique({
+      where: { id },
+      include: productPriceDetailInclude,
+    });
+
+    if (!productPrice) {
+      throw new AppError('Price not found', 404);
+    }
+
+    res.json({
+      status: 'success',
+      data: {
+        price: productPrice,
+        productPrice,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Create or update a price using the frontend body contract
+ * POST /api/product-prices
+ */
+export const createProductPrice = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const productId = parseInt(String(req.body.productId));
+    const customerTypeId = parseInt(String(req.body.customerTypeId));
+    const price = parseFloat(String(req.body.price));
+
+    if (!Number.isInteger(productId) || !Number.isInteger(customerTypeId) || Number.isNaN(price)) {
+      throw new AppError('Product, customer type and price are required', 400);
+    }
+
+    const productPrice = await upsertProductPriceRecord(productId, customerTypeId, price);
+    await syncForcedInactiveFlag(productId);
+
+    logger.info(`Price ${productPrice.id} for product ${productId} saved: ${price}`);
+
+    res.status(201).json({
+      status: 'success',
+      data: {
+        price: productPrice,
+        productPrice,
       },
     });
   } catch (error) {
@@ -128,59 +246,86 @@ export const upsertProductPrice = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { productId } = req.params;
-    const { customerTypeId, price } = req.body;
+    const productId = parseInt(req.params.productId);
+    const customerTypeId = parseInt(String(req.body.customerTypeId));
+    const price = parseFloat(String(req.body.price));
 
-    if (!customerTypeId || price === undefined || price === null) {
+    if (!Number.isInteger(productId) || !Number.isInteger(customerTypeId) || Number.isNaN(price)) {
       throw new AppError('Customer type and price are required', 400);
     }
 
-    // Validate product exists
-    const product = await prisma.product.findUnique({
-      where: { id: parseInt(productId) },
+    const productPrice = await upsertProductPriceRecord(productId, customerTypeId, price);
+    await syncForcedInactiveFlag(productId);
+
+    logger.info(`Price ${productPrice.id} for product ${productId} updated: ${price}`);
+
+    res.json({
+      status: 'success',
+      data: {
+        price: productPrice,
+        productPrice,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Update a price by ID using the frontend route contract
+ * PUT /api/product-prices/:id
+ */
+export const updateProductPriceById = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id);
+
+    const existing = await prisma.productPrice.findUnique({
+      where: { id },
     });
 
-    if (!product) {
-      throw new AppError('Product not found', 404);
+    if (!existing) {
+      throw new AppError('Price not found', 404);
     }
 
-    // Validate customer type exists
+    const nextCustomerTypeId =
+      req.body.customerTypeId !== undefined
+        ? parseInt(String(req.body.customerTypeId))
+        : existing.customerTypeId;
+    const nextPrice =
+      req.body.price !== undefined ? parseFloat(String(req.body.price)) : Number(existing.price);
+
+    if (!Number.isInteger(nextCustomerTypeId) || Number.isNaN(nextPrice)) {
+      throw new AppError('Valid customer type and price are required', 400);
+    }
+
     const customerType = await prisma.customerType.findUnique({
-      where: { id: customerTypeId },
+      where: { id: nextCustomerTypeId },
     });
 
     if (!customerType) {
       throw new AppError('Customer type not found', 404);
     }
 
-    // Upsert price
-    const productPrice = await prisma.productPrice.upsert({
-      where: {
-        productId_customerTypeId: {
-          productId: parseInt(productId),
-          customerTypeId: customerTypeId,
-        },
+    const productPrice = await prisma.productPrice.update({
+      where: { id },
+      data: {
+        customerTypeId: nextCustomerTypeId,
+        price: nextPrice,
       },
-      update: {
-        price: parseFloat(price.toString()),
-      },
-      create: {
-        productId: parseInt(productId),
-        customerTypeId: customerTypeId,
-        price: parseFloat(price.toString()),
-      },
-      include: {
-        customerType: true,
-      },
+      include: productPriceDetailInclude,
     });
-
-    logger.info(
-      `Price ${productPrice.id} for product ${productId} updated: ₮${price}`
-    );
+    await syncForcedInactiveFlag(productPrice.productId);
 
     res.json({
       status: 'success',
-      data: { price: productPrice },
+      data: {
+        price: productPrice,
+        productPrice,
+      },
     });
   } catch (error) {
     next(error);
@@ -198,13 +343,12 @@ export const bulkUpdateProductPrices = async (
 ): Promise<void> => {
   try {
     const { productId } = req.params;
-    const { prices } = req.body; // Array of { customerTypeId, price }
+    const { prices } = req.body;
 
     if (!Array.isArray(prices) || prices.length === 0) {
       throw new AppError('Prices array is required', 400);
     }
 
-    // Validate product exists
     const product = await prisma.product.findUnique({
       where: { id: parseInt(productId) },
     });
@@ -213,7 +357,6 @@ export const bulkUpdateProductPrices = async (
       throw new AppError('Product not found', 404);
     }
 
-    // Validate all customer types exist
     const customerTypeIds = prices.map((p) => p.customerTypeId);
     const customerTypes = await prisma.customerType.findMany({
       where: { id: { in: customerTypeIds } },
@@ -223,7 +366,6 @@ export const bulkUpdateProductPrices = async (
       throw new AppError('One or more customer types not found', 404);
     }
 
-    // Bulk upsert prices using transaction
     const updatedPrices = await prisma.$transaction(
       prices.map((priceData) =>
         prisma.productPrice.upsert({
@@ -247,15 +389,15 @@ export const bulkUpdateProductPrices = async (
         })
       )
     );
+    await syncForcedInactiveFlag(parseInt(productId));
 
-    logger.info(
-      `Bulk updated ${updatedPrices.length} prices for product ${productId}`
-    );
+    logger.info(`Bulk updated ${updatedPrices.length} prices for product ${productId}`);
 
     res.json({
       status: 'success',
       data: {
         prices: updatedPrices,
+        productPrices: updatedPrices,
         count: updatedPrices.length,
       },
     });
@@ -284,10 +426,41 @@ export const deleteProductPrice = async (
         },
       },
     });
+    await syncForcedInactiveFlag(parseInt(productId));
 
-    logger.info(
-      `Price deleted for product ${productId}, customer type ${customerTypeId}`
-    );
+    logger.info(`Price deleted for product ${productId}, customer type ${customerTypeId}`);
+
+    res.json({
+      status: 'success',
+      data: {
+        message: 'Price deleted successfully',
+        deletedPrice,
+      },
+    });
+  } catch (error: any) {
+    if (error.code === 'P2025') {
+      return next(new AppError('Price not found', 404));
+    }
+    next(error);
+  }
+};
+
+/**
+ * Delete a price by ID using the frontend route contract
+ * DELETE /api/product-prices/:id
+ */
+export const deleteProductPriceById = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id);
+
+    const deletedPrice = await prisma.productPrice.delete({
+      where: { id },
+    });
+    await syncForcedInactiveFlag(deletedPrice.productId);
 
     res.json({
       status: 'success',
@@ -315,9 +488,8 @@ export const copyProductPrices = async (
 ): Promise<void> => {
   try {
     const { sourceProductId, targetProductId } = req.params;
-    const { overwrite } = req.body; // If true, overwrite existing prices
+    const { overwrite } = req.body;
 
-    // Validate both products exist
     const [sourceProduct, targetProduct] = await Promise.all([
       prisma.product.findUnique({ where: { id: parseInt(sourceProductId) } }),
       prisma.product.findUnique({ where: { id: parseInt(targetProductId) } }),
@@ -331,7 +503,6 @@ export const copyProductPrices = async (
       throw new AppError('Target product not found', 404);
     }
 
-    // Get source prices
     const sourcePrices = await prisma.productPrice.findMany({
       where: { productId: parseInt(sourceProductId) },
     });
@@ -340,7 +511,6 @@ export const copyProductPrices = async (
       throw new AppError('No prices found for source product', 404);
     }
 
-    // Copy prices to target product
     const copiedPrices = await prisma.$transaction(
       sourcePrices.map((sourcePrice) =>
         prisma.productPrice.upsert({
@@ -350,11 +520,7 @@ export const copyProductPrices = async (
               customerTypeId: sourcePrice.customerTypeId,
             },
           },
-          update: overwrite
-            ? {
-                price: sourcePrice.price,
-              }
-            : {},
+          update: overwrite ? { price: sourcePrice.price } : {},
           create: {
             productId: parseInt(targetProductId),
             customerTypeId: sourcePrice.customerTypeId,
@@ -366,6 +532,7 @@ export const copyProductPrices = async (
         })
       )
     );
+    await syncForcedInactiveFlag(parseInt(targetProductId));
 
     logger.info(
       `Copied ${copiedPrices.length} prices from product ${sourceProductId} to ${targetProductId}`
@@ -375,6 +542,7 @@ export const copyProductPrices = async (
       status: 'success',
       data: {
         prices: copiedPrices,
+        productPrices: copiedPrices,
         count: copiedPrices.length,
       },
     });
@@ -394,13 +562,12 @@ export const adjustProductPrices = async (
 ): Promise<void> => {
   try {
     const { productId } = req.params;
-    const { percentage, customerTypeIds } = req.body; // percentage can be positive or negative
+    const { percentage, customerTypeIds } = req.body;
 
     if (percentage === undefined || percentage === null) {
       throw new AppError('Percentage is required', 400);
     }
 
-    // Validate product exists
     const product = await prisma.product.findUnique({
       where: { id: parseInt(productId) },
     });
@@ -409,7 +576,6 @@ export const adjustProductPrices = async (
       throw new AppError('Product not found', 404);
     }
 
-    // Build where clause
     const where: any = {
       productId: parseInt(productId),
     };
@@ -418,7 +584,6 @@ export const adjustProductPrices = async (
       where.customerTypeId = { in: customerTypeIds };
     }
 
-    // Get current prices
     const currentPrices = await prisma.productPrice.findMany({
       where,
     });
@@ -427,7 +592,6 @@ export const adjustProductPrices = async (
       throw new AppError('No prices found to adjust', 404);
     }
 
-    // Calculate new prices
     const multiplier = 1 + percentage / 100;
     const updatedPrices = await prisma.$transaction(
       currentPrices.map((priceRecord) =>
@@ -442,15 +606,15 @@ export const adjustProductPrices = async (
         })
       )
     );
+    await syncForcedInactiveFlag(parseInt(productId));
 
-    logger.info(
-      `Adjusted ${updatedPrices.length} prices for product ${productId} by ${percentage}%`
-    );
+    logger.info(`Adjusted ${updatedPrices.length} prices for product ${productId} by ${percentage}%`);
 
     res.json({
       status: 'success',
       data: {
         prices: updatedPrices,
+        productPrices: updatedPrices,
         count: updatedPrices.length,
         adjustment: `${percentage > 0 ? '+' : ''}${percentage}%`,
       },

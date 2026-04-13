@@ -3,6 +3,10 @@ import prisma from "../db/prisma";
 import { AppError } from "../middleware/error.middleware";
 import logger from "../utils/logger";
 import { serializeProduct, serializeProducts } from "../utils/serializer";
+import {
+  resolveProductActiveState,
+  withResolvedProductActiveState,
+} from "../utils/productAvailability";
 
 export const createProduct = async (
   req: Request,
@@ -20,8 +24,7 @@ export const createProduct = async (
       categoryId,
       stockQuantity,
       unitsPerBox,
-      priceWholesale,
-      priceRetail,
+      defaultPrice,
       pricePerBox,
       netWeight,
       grossWeight,
@@ -53,12 +56,16 @@ export const createProduct = async (
         categoryId,
         stockQuantity: stockQuantity || 0,
         unitsPerBox,
-        priceWholesale,
-        priceRetail,
+        defaultPrice,
         pricePerBox,
         netWeight,
         grossWeight,
-        isActive: isActive !== undefined ? isActive : true,
+        isActive: resolveProductActiveState({
+          requestedIsActive: isActive,
+          stockQuantity: stockQuantity || 0,
+          defaultPrice,
+          pricePerBox,
+        }),
       },
       include: {
         //supplier: true,
@@ -70,7 +77,7 @@ export const createProduct = async (
 
     res.status(201).json({
       status: "success",
-      data: { product: serializeProduct(product) },
+      data: { product: serializeProduct(withResolvedProductActiveState(product)) },
     });
   } catch (error) {
     next(error);
@@ -132,7 +139,9 @@ export const getAllProducts = async (
     res.json({
       status: "success",
       data: {
-        products: serializeProducts(products),
+        products: serializeProducts(
+          products.map((product) => withResolvedProductActiveState(product))
+        ),
         pagination: {
           page,
           limit: limit || total,
@@ -175,7 +184,7 @@ export const getProductById = async (
 
     res.json({
       status: "success",
-      data: { product: serializeProduct(product) },
+      data: { product: serializeProduct(withResolvedProductActiveState(product)) },
     });
   } catch (error) {
     next(error);
@@ -198,8 +207,7 @@ export const updateProduct = async (
       supplierId,
       categoryId,
       unitsPerBox,
-      priceWholesale,
-      priceRetail,
+      defaultPrice,
       pricePerBox,
       netWeight,
       grossWeight,
@@ -208,6 +216,13 @@ export const updateProduct = async (
 
     const product = await prisma.product.findUnique({
       where: { id: parseInt(id) },
+      include: {
+        prices: {
+          select: {
+            price: true,
+          },
+        },
+      },
     });
 
     if (!product) {
@@ -239,12 +254,18 @@ export const updateProduct = async (
        // supplierId,
         categoryId,
         unitsPerBox,
-        priceWholesale,
-        priceRetail,
+        defaultPrice,
         pricePerBox,
         netWeight,
         grossWeight,
-        isActive,
+        isActive: resolveProductActiveState({
+          currentIsActive: product.isActive,
+          requestedIsActive: isActive,
+          stockQuantity: product.stockQuantity,
+          defaultPrice: defaultPrice ?? product.defaultPrice,
+          pricePerBox: pricePerBox ?? product.pricePerBox,
+          prices: product.prices,
+        }),
       },
       include: {
         
@@ -256,7 +277,7 @@ export const updateProduct = async (
 
     res.json({
       status: "success",
-      data: { product: serializeProduct(updatedProduct) },
+      data: { product: serializeProduct(withResolvedProductActiveState(updatedProduct)) },
     });
   } catch (error) {
     next(error);
@@ -273,6 +294,13 @@ export const adjustInventory = async (
 
     const product = await prisma.product.findUnique({
       where: { id: productId },
+      include: {
+        prices: {
+          select: {
+            price: true,
+          },
+        },
+      },
     });
 
     if (!product) {
@@ -287,7 +315,16 @@ export const adjustInventory = async (
 
     const updatedProduct = await prisma.product.update({
       where: { id: productId },
-      data: { stockQuantity: newQuantity },
+      data: {
+        stockQuantity: newQuantity,
+        isActive: resolveProductActiveState({
+          currentIsActive: product.isActive,
+          stockQuantity: newQuantity,
+          defaultPrice: product.defaultPrice,
+          pricePerBox: product.pricePerBox,
+          prices: product.prices,
+        }),
+      },
     });
 
     logger.info(
@@ -336,14 +373,16 @@ export const getProductByBarcode = async (
     if (products.length === 1) {
       res.json({
         status: "success",
-        data: { product: serializeProduct(products[0]) },
+        data: { product: serializeProduct(withResolvedProductActiveState(products[0])) },
       });
     } else {
       // If multiple products found, return all
       res.json({
         status: "success",
         data: { 
-          products: serializeProducts(products),
+          products: serializeProducts(
+            products.map((product) => withResolvedProductActiveState(product))
+          ),
           count: products.length,
           message: `${products.length} бүтээгдэхүүн олдлоо`
         },

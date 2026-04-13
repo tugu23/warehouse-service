@@ -186,8 +186,7 @@ export class ExcelService {
       { header: "Ангилал", key: "category", width: 20 },
       { header: "Үлдэгдэл", key: "stockQuantity", width: 12 },
       { header: "Хайрцаг дахь тоо", key: "unitsPerBox", width: 15 },
-      { header: "Бөөний үнэ", key: "priceWholesale", width: 15 },
-      { header: "Жижиглэнгийн үнэ", key: "priceRetail", width: 18 },
+      { header: "Үндсэн үнэ", key: "defaultPrice", width: 15 },
       { header: "Хайрцагны үнэ", key: "pricePerBox", width: 15 },
       { header: "Цэвэр жин (кг)", key: "netWeight", width: 15 },
       { header: "Бохир жин (кг)", key: "grossWeight", width: 15 },
@@ -212,8 +211,7 @@ export class ExcelService {
         category: product.category?.nameMongolian || "N/A",
         stockQuantity: product.stockQuantity,
         unitsPerBox: product.unitsPerBox || "N/A",
-        priceWholesale: parseFloat(product.priceWholesale?.toString() || "0"),
-        priceRetail: parseFloat(product.priceRetail?.toString() || "0"),
+        defaultPrice: parseFloat(product.defaultPrice?.toString() || "0"),
         pricePerBox: parseFloat(product.pricePerBox?.toString() || "0"),
         netWeight: parseFloat(product.netWeight?.toString() || "0"),
         grossWeight: parseFloat(product.grossWeight?.toString() || "0"),
@@ -221,8 +219,7 @@ export class ExcelService {
       });
     });
 
-    worksheet.getColumn("priceWholesale").numFmt = "#,##0.00";
-    worksheet.getColumn("priceRetail").numFmt = "#,##0.00";
+    worksheet.getColumn("defaultPrice").numFmt = "#,##0.00";
     worksheet.getColumn("pricePerBox").numFmt = "#,##0.00";
     worksheet.getColumn("netWeight").numFmt = "#,##0.000";
     worksheet.getColumn("grossWeight").numFmt = "#,##0.000";
@@ -260,7 +257,7 @@ export class ExcelService {
       { header: "Ангилал", key: "category", width: 20 },
       { header: "Нийлүүлэгч", key: "supplier", width: 25 },
       { header: "Үлдэгдэл", key: "stockQuantity", width: 12 },
-      { header: "Бөөний үнэ", key: "priceWholesale", width: 15 },
+      { header: "Үндсэн үнэ", key: "defaultPrice", width: 15 },
       { header: "Үлдэгдлийн үнэ", key: "stockValue", width: 18 },
     ];
 
@@ -278,12 +275,12 @@ export class ExcelService {
         category: product.category,
         supplier: product.supplier,
         stockQuantity: product.stockQuantity,
-        priceWholesale: product.priceWholesale,
+        defaultPrice: product.defaultPrice,
         stockValue: product.stockValue,
       });
     });
 
-    productsSheet.getColumn("priceWholesale").numFmt = "#,##0.00";
+    productsSheet.getColumn("defaultPrice").numFmt = "#,##0.00";
     productsSheet.getColumn("stockValue").numFmt = "#,##0.00";
 
     return await workbook.xlsx.writeBuffer();

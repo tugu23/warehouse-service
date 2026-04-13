@@ -85,8 +85,8 @@ async function seedAllProducts() {
           categoryId: categoryId,
           stockQuantity: 0,
           unitsPerBox: obj.khairtsag || null,
-          priceWholesale: parseDecimal(obj.price_sh_w),
-          priceRetail: parseDecimal(obj.price_sh_d),
+          defaultPrice:
+            parseDecimal(obj.price_sh_d) ?? parseDecimal(obj.price_sh_w),
           pricePerBox: parseDecimal(obj.price_box_d),
           netWeight: parseDecimal(obj.tsewer_jin),
           grossWeight: parseDecimal(obj.bohir_jin),
@@ -103,8 +103,8 @@ async function seedAllProducts() {
           categoryId: categoryId,
           stockQuantity: 0,
           unitsPerBox: obj.khairtsag || null,
-          priceWholesale: parseDecimal(obj.price_sh_w),
-          priceRetail: parseDecimal(obj.price_sh_d),
+          defaultPrice:
+            parseDecimal(obj.price_sh_d) ?? parseDecimal(obj.price_sh_w),
           pricePerBox: parseDecimal(obj.price_box_d),
           netWeight: parseDecimal(obj.tsewer_jin),
           grossWeight: parseDecimal(obj.bohir_jin),

@@ -82,6 +82,12 @@ function cleanPhoneNumber(phone: any): string | null {
   return str ? `+976${str}` : null;
 }
 
+/** Legacy dumps may store address/district as numeric codes */
+function stringifyOptional(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  return String(value);
+}
+
 function parseCoordinate(value: any): number | null {
   if (!value) return null;
   const num = parseFloat(String(value));
@@ -310,8 +316,8 @@ async function main() {
       categoryId: categoryId || null,
       stockQuantity: 0, // Will be updated from inventory
       unitsPerBox: obj.khairtsag || null,
-      priceWholesale: parseDecimal(obj.price_sh_w),
-      priceRetail: parseDecimal(obj.price_sh_d),
+      defaultPrice:
+        parseDecimal(obj.price_sh_d) ?? parseDecimal(obj.price_sh_w),
       pricePerBox: parseDecimal(obj.price_box_d),
       netWeight: parseDecimal(obj.tsewer_jin),
       grossWeight: parseDecimal(obj.bohir_jin),
@@ -327,9 +333,9 @@ async function main() {
       // Use $executeRawUnsafe to insert with specific ID
       const result = await prisma.$executeRawUnsafe(`
         INSERT INTO products (id, name_mongolian, name_english, name_korean, product_code, barcode, 
-          supplier_id, category_id, stock_quantity, units_per_box, price_wholesale, price_retail, 
+          supplier_id, category_id, stock_quantity, units_per_box, default_price, 
           price_per_box, net_weight, gross_weight, is_active)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, true)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, true)
         ON CONFLICT (id) DO NOTHING
       `,
         productData.id,
@@ -342,8 +348,7 @@ async function main() {
         productData.categoryId || null,
         productData.stockQuantity || 0,
         productData.unitsPerBox || null,
-        productData.priceWholesale || null,
-        productData.priceRetail || null,
+        productData.defaultPrice || null,
         productData.pricePerBox || null,
         productData.netWeight || null,
         productData.grossWeight || null
@@ -455,8 +460,8 @@ async function main() {
       registrationNumber: obj.hariltsagch_id
         ? String(obj.hariltsagch_id)
         : null,
-      address: obj.hayg || null,
-      district: obj.dvvreg || null,
+      address: stringifyOptional(obj.hayg),
+      district: stringifyOptional(obj.dvvreg),
       detailedAddress: null,
       phoneNumber: cleanPhoneNumber(obj.utas),
       isVatPayer: parseBoolean(obj.noat_tulugch),
@@ -481,7 +486,7 @@ async function main() {
             name: data.name,
             phoneNumber: data.phoneNumber || "",
             registrationNumber: data.registrationNumber || "",
-            address: data.address || "",
+            address: data.address ?? "",
           };
 
           // Check if customer already exists
@@ -509,54 +514,14 @@ async function main() {
   console.log(`  ✓ Customers created: ${customers.length}`);
 
   // ============================================================================
-  // PHASE 6: Product Batches
+  // PHASE 6: Product Batches (schema no longer has ProductBatch — migration removed table)
   // ============================================================================
-  console.log("\n📦 Phase 6: Creating product batches...");
   const containerData = loadJsonData("container");
-  const batches: any[] = [];
-
-  for (const row of containerData.rows) {
-    const obj = mapRowToObject(containerData.columns, row);
-
-    const productId = obj.baraanii_id
-      ? idMapper.get("baraa", obj.baraanii_id)
-      : null;
-
-    if (!productId) continue;
-
-    const arrivalDate = parseDate(obj.ognoo) || new Date();
-    const expiryDate = new Date(arrivalDate);
-    expiryDate.setMonth(expiryDate.getMonth() + 6); // Default 6 month expiry
-
-    batches.push({
-      productId: productId,
-      batchNumber: obj.number ? String(obj.number) : `BATCH-${obj.id}`,
-      arrivalDate: arrivalDate,
-      expiryDate: expiryDate,
-      quantity: obj.too || 0,
-      costPrice: null,
-      supplierInvoice: null,
-      isActive: true,
-    });
-  }
-
-  await batchProcess(
-    batches,
-    500,
-    async (batch) => {
-      try {
-        await prisma.productBatch.createMany({
-          data: batch,
-          skipDuplicates: true,
-        });
-      } catch (error) {
-        console.error(`  ⚠️  Error creating batches:`, error);
-      }
-    },
-    "product batches"
+  const legacyBatchRowCount = containerData.rows?.length ?? 0;
+  console.log("\n📦 Phase 6: Product batches...");
+  console.log(
+    `  ⏭️  SKIPPED (${legacyBatchRowCount} legacy rows): ProductBatch model was removed from schema`
   );
-
-  console.log(`  ✓ Product batches created: ${batches.length}`);
 
   // ============================================================================
   // PHASE 7: Delivery Plans
@@ -719,7 +684,9 @@ async function main() {
   console.log(`  📦 Products: ${products.length}`);
   console.log(`  🏢 Customers: ${customers.length}`);
   console.log(`  👥 Sales Agents: ${borluulagchData.rows.length}`);
-  console.log(`  📦 Product Batches: ${batches.length}`);
+  console.log(
+    `  📦 Product Batches: 0 imported (${legacyBatchRowCount} legacy rows skipped — no table)`
+  );
   console.log(`  🚚 Delivery Plans: ${plans.length}`);
   console.log(`  📍 Agent Locations: ${locations.length} (sampled)`);
   console.log(

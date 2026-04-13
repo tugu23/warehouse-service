@@ -164,6 +164,29 @@ describe("Orders API", () => {
 
       expect(updatedProduct?.stockQuantity).toBe(initialStock - 10);
     });
+
+    it("should not allow creating an order with an inactive product", async () => {
+      await prisma.product.update({
+        where: { id: testData.products.product1.id },
+        data: { isActive: false },
+      });
+
+      const response = await request(app)
+        .post("/api/orders")
+        .set("Authorization", `Bearer ${agentToken}`)
+        .send({
+          customerId: testData.customer.id,
+          items: [
+            {
+              productId: testData.products.product1.id,
+              quantity: 1,
+            },
+          ],
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain("идэвхгүй");
+    });
   });
 
   describe("GET /api/orders", () => {
@@ -331,6 +354,107 @@ describe("Orders API", () => {
           status: "Fulfilled",
         })
         .expect(404);
+    });
+  });
+
+  describe("POST /api/orders/:id/ebarimt-return-done", () => {
+    let orderId: number;
+
+    beforeEach(async () => {
+      const orderResponse = await request(app)
+        .post("/api/orders")
+        .set("Authorization", `Bearer ${agentToken}`)
+        .send({
+          customerId: testData.customer.id,
+          items: [
+            {
+              productId: testData.products.product1.id,
+              quantity: 5,
+            },
+            {
+              productId: testData.products.product2.id,
+              quantity: 2,
+            },
+          ],
+        })
+        .expect(201);
+
+      orderId = orderResponse.body.data.order.id;
+
+      await prisma.order.update({
+        where: { id: orderId },
+        data: {
+          ebarimtRegistered: true,
+          ebarimtId: "test-ebarimt-id",
+          ebarimtBillId: "test-ebarimt-bill",
+          ebarimtDate: new Date(),
+        },
+      });
+    });
+
+    it("should restock items and cancel the order on first ebarimt return", async () => {
+      const product1Before = await prisma.product.findUnique({
+        where: { id: testData.products.product1.id },
+      });
+      const product2Before = await prisma.product.findUnique({
+        where: { id: testData.products.product2.id },
+      });
+
+      const response = await request(app)
+        .post(`/api/orders/${orderId}/ebarimt-return-done`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          returnId: "return-123",
+        })
+        .expect(200);
+
+      const updatedOrder = await prisma.order.findUnique({
+        where: { id: orderId },
+      });
+      const product1After = await prisma.product.findUnique({
+        where: { id: testData.products.product1.id },
+      });
+      const product2After = await prisma.product.findUnique({
+        where: { id: testData.products.product2.id },
+      });
+
+      expect(response.body.status).toBe("success");
+      expect(response.body.data.status).toBe("Cancelled");
+      expect(response.body.data.restocked).toBe(true);
+      expect(updatedOrder?.status).toBe("Cancelled");
+      expect(updatedOrder?.ebarimtReturnId).toBe("return-123");
+      expect(product1After?.stockQuantity).toBe((product1Before?.stockQuantity || 0) + 5);
+      expect(product2After?.stockQuantity).toBe((product2Before?.stockQuantity || 0) + 2);
+    });
+
+    it("should not restock twice when the same return is submitted again", async () => {
+      await request(app)
+        .post(`/api/orders/${orderId}/ebarimt-return-done`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          returnId: "return-123",
+        })
+        .expect(200);
+
+      const productBeforeRetry = await prisma.product.findUnique({
+        where: { id: testData.products.product1.id },
+      });
+
+      const response = await request(app)
+        .post(`/api/orders/${orderId}/ebarimt-return-done`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          returnId: "return-123",
+        })
+        .expect(200);
+
+      const productAfterRetry = await prisma.product.findUnique({
+        where: { id: testData.products.product1.id },
+      });
+
+      expect(response.body.status).toBe("success");
+      expect(response.body.data.restocked).toBe(false);
+      expect(productAfterRetry?.stockQuantity).toBe(productBeforeRetry?.stockQuantity);
     });
   });
 });

@@ -10,8 +10,80 @@ interface VneData {
   rows: Array<[number, number, number, number]>; // [id, baraanii_id, turul_id, vne]
 }
 
+/**
+ * Хуучин turul_id (жишээ нь 8) нь одоогийн 5 суваг (id 1–5)-тай таарахгүй үед.
+ * Шаардлагатай бол өөрчилнө үү (бизнесийн логикоор аль суваг руу оноохоо).
+ */
+const LEGACY_TURUL_ID_FALLBACK: Record<number, number> = {
+  8: 2, // жишээ: хуучин 8 → Дэлгүүр (id 2)
+};
+
+function mapRowToObject(columns: string[], row: unknown[]): Record<string, unknown> {
+  const obj: Record<string, unknown> = {};
+  columns.forEach((col, idx) => {
+    obj[col] = row[idx];
+  });
+  return obj;
+}
+
+/**
+ * Legacy turul id → одоогийн customer_types.id (ихэвчлэн 1–5).
+ */
+async function buildLegacyTurulResolver(): Promise<(legacyTurulId: number) => number | null> {
+  const existing = await prisma.customerType.findMany({ select: { id: true, typeName: true } });
+  const existingById = new Map(existing.map((c) => [c.id, c]));
+  const legacyToCurrent = new Map<number, number>();
+
+  for (const ct of existing) {
+    legacyToCurrent.set(ct.id, ct.id);
+  }
+
+  const harPath = path.join(__dirname, "parsed-data", "turul_hariltsagch.json");
+  if (fs.existsSync(harPath)) {
+    const raw = JSON.parse(fs.readFileSync(harPath, "utf-8")) as {
+      columns: string[];
+      rows: unknown[][];
+    };
+    for (const row of raw.rows) {
+      const obj = mapRowToObject(raw.columns, row);
+      const legacyId = Number(obj.id);
+      if (Number.isNaN(legacyId)) continue;
+      const typeName = String(obj.turul ?? `Төрөл ${obj.id}`);
+      const match = existing.find((c) => c.typeName === typeName);
+      if (match) legacyToCurrent.set(legacyId, match.id);
+    }
+  }
+
+  for (const [legacy, targetId] of Object.entries(LEGACY_TURUL_ID_FALLBACK)) {
+    const lid = Number(legacy);
+    if (existingById.has(targetId) && !legacyToCurrent.has(lid)) {
+      legacyToCurrent.set(lid, targetId);
+    }
+  }
+
+  const warned = new Set<number>();
+
+  return (legacyTurulId: number): number | null => {
+    if (legacyToCurrent.has(legacyTurulId)) {
+      return legacyToCurrent.get(legacyTurulId)!;
+    }
+    if (existingById.has(legacyTurulId)) {
+      return legacyTurulId;
+    }
+    if (!warned.has(legacyTurulId)) {
+      warned.add(legacyTurulId);
+      console.log(
+        `⚠️  Legacy turul_id ${legacyTurulId} has no mapping to current customer_types (1–5). Add turul_hariltsagch.json or LEGACY_TURUL_ID_FALLBACK.`
+      );
+    }
+    return null;
+  };
+}
+
 async function main() {
   console.log("🏷️  Starting price data seed from vne.json...");
+
+  const resolveTurul = await buildLegacyTurulResolver();
 
   // Read vne.json file
   const vneFilePath = path.join(__dirname, "parsed-data", "vne.json");
@@ -48,15 +120,8 @@ async function main() {
         continue;
       }
 
-      // Check if customer type exists
-      const customerType = await prisma.customerType.findUnique({
-        where: { id: turul_id },
-      });
-
-      if (!customerType) {
-        console.log(
-          `⚠️  Customer type not found for turul_id: ${turul_id}, skipping...`
-        );
+      const customerTypeId = resolveTurul(turul_id);
+      if (customerTypeId === null) {
         skipCount++;
         continue;
       }
@@ -66,7 +131,7 @@ async function main() {
         where: {
           productId_customerTypeId: {
             productId: baraanii_id,
-            customerTypeId: turul_id,
+            customerTypeId: customerTypeId,
           },
         },
         update: {
@@ -74,7 +139,7 @@ async function main() {
         },
         create: {
           productId: baraanii_id,
-          customerTypeId: turul_id,
+          customerTypeId: customerTypeId,
           price: vne,
         },
       });
