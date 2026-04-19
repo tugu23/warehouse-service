@@ -10,6 +10,10 @@ import {
   postAgentKpiTarget,
   patchAgentKpiTarget,
   deleteAgentKpiTarget,
+  getAgentKpiDashboardSummary,
+  getAgentKpiRanking,
+  getAgentKpiCategoryAnalysis,
+  getAgentKpiTrendData,
 } from "../controllers/agent-kpi.controller";
 
 const router = Router();
@@ -95,6 +99,56 @@ router.delete(
   [param("id").isInt()],
   validate,
   deleteAgentKpiTarget
+);
+
+// New dashboard endpoints
+router.get(
+  "/dashboard-summary",
+  checkRole(agentKpiReaders),
+  [
+    dateQuery("from"),
+    dateQuery("to"),
+    query("agentId").optional().isInt(),
+  ],
+  validate,
+  getAgentKpiDashboardSummary
+);
+
+router.get(
+  "/ranking",
+  checkRole(["Admin", "Manager"]),
+  [
+    dateQuery("from"),
+    dateQuery("to"),
+    query("sortBy").optional().isIn(["amount", "boxes", "orders", "achievement"]),
+  ],
+  validate,
+  getAgentKpiRanking
+);
+
+router.get(
+  "/category-analysis",
+  checkRole(agentKpiReaders),
+  [
+    dateQuery("from"),
+    dateQuery("to"),
+    query("agentId").optional().isInt(),
+  ],
+  validate,
+  getAgentKpiCategoryAnalysis
+);
+
+router.get(
+  "/trend-data",
+  checkRole(agentKpiReaders),
+  [
+    dateQuery("from"),
+    dateQuery("to"),
+    query("agentId").optional().isInt(),
+    query("granularity").optional().isIn(["day", "month"]),
+  ],
+  validate,
+  getAgentKpiTrendData
 );
 
 export default router;

@@ -468,3 +468,331 @@ export async function deleteTarget(id: number): Promise<void> {
 export async function getTargetById(id: number): Promise<AgentSalesTarget | null> {
   return prisma.agentSalesTarget.findUnique({ where: { id } });
 }
+
+// New dashboard functions
+
+export async function getDashboardSummary(filters: {
+  from: string;
+  to: string;
+  agentId?: number;
+}) {
+  const tz = getKpiTimezone();
+  const { from, to, agentId } = filters;
+
+  // Total metrics
+  const totalsSql = `
+    SELECT
+      COALESCE(SUM(oi.quantity::numeric * oi.unit_price::numeric), 0)::text AS total_amount,
+      COALESCE(SUM(
+        CASE
+          WHEN p.units_per_box IS NOT NULL AND p.units_per_box > 0
+          THEN FLOOR(oi.quantity::numeric / p.units_per_box::numeric)
+          ELSE 0
+        END
+      ), 0)::bigint AS total_boxes,
+      COUNT(DISTINCT o.id)::integer AS total_orders
+    FROM orders o
+    INNER JOIN order_items oi ON oi.order_id = o.id
+    INNER JOIN products p ON p.id = oi.product_id
+    WHERE o.payment_status = '${PAYMENT_STATUS_PAID}'
+      AND (o.order_date AT TIME ZONE $1)::date >= $2::date
+      AND (o.order_date AT TIME ZONE $1)::date <= $3::date
+      AND ($4::integer IS NULL OR o.agent_id = $4)
+  `;
+
+  const totalsResult = await prisma.$queryRawUnsafe<Array<{
+    total_amount: string;
+    total_boxes: bigint;
+    total_orders: number;
+  }>>(totalsSql, tz, from, to, agentId ?? null);
+
+  const totals = totalsResult[0] || { total_amount: '0', total_boxes: 0n, total_orders: 0 };
+  const totalAmount = parseFloat(totals.total_amount);
+  const totalBoxes = Number(totals.total_boxes);
+  const totalOrders = totals.total_orders;
+  const avgOrderValue = totalOrders > 0 ? totalAmount / totalOrders : 0;
+
+  // Top agent
+  const topAgentSql = `
+    SELECT e.id, e.name,
+      COALESCE(SUM(oi.quantity::numeric * oi.unit_price::numeric), 0)::text AS amount
+    FROM orders o
+    INNER JOIN order_items oi ON oi.order_id = o.id
+    INNER JOIN employees e ON e.id = o.agent_id
+    WHERE o.payment_status = '${PAYMENT_STATUS_PAID}'
+      AND (o.order_date AT TIME ZONE $1)::date >= $2::date
+      AND (o.order_date AT TIME ZONE $1)::date <= $3::date
+    GROUP BY e.id, e.name
+    ORDER BY SUM(oi.quantity::numeric * oi.unit_price::numeric) DESC
+    LIMIT 1
+  `;
+
+  const topAgentResult = await prisma.$queryRawUnsafe<Array<{
+    id: number;
+    name: string;
+    amount: string;
+  }>>(topAgentSql, tz, from, to);
+
+  const topAgent = topAgentResult[0]
+    ? { id: topAgentResult[0].id, name: topAgentResult[0].name, amount: parseFloat(topAgentResult[0].amount) }
+    : { id: 0, name: 'N/A', amount: 0 };
+
+  // Top product
+  const topProductSql = `
+    SELECT p.id, p.name_mongolian AS name,
+      COALESCE(SUM(oi.quantity::numeric * oi.unit_price::numeric), 0)::text AS amount
+    FROM orders o
+    INNER JOIN order_items oi ON oi.order_id = o.id
+    INNER JOIN products p ON p.id = oi.product_id
+    WHERE o.payment_status = '${PAYMENT_STATUS_PAID}'
+      AND (o.order_date AT TIME ZONE $1)::date >= $2::date
+      AND (o.order_date AT TIME ZONE $1)::date <= $3::date
+      AND ($4::integer IS NULL OR o.agent_id = $4)
+    GROUP BY p.id, p.name_mongolian
+    ORDER BY SUM(oi.quantity::numeric * oi.unit_price::numeric) DESC
+    LIMIT 1
+  `;
+
+  const topProductResult = await prisma.$queryRawUnsafe<Array<{
+    id: number;
+    name: string;
+    amount: string;
+  }>>(topProductSql, tz, from, to, agentId ?? null);
+
+  const topProduct = topProductResult[0]
+    ? { id: topProductResult[0].id, name: topProductResult[0].name, amount: parseFloat(topProductResult[0].amount) }
+    : { id: 0, name: 'N/A', amount: 0 };
+
+  // Top category
+  const topCategorySql = `
+    SELECT c.id, c.name_mongolian AS name,
+      COALESCE(SUM(oi.quantity::numeric * oi.unit_price::numeric), 0)::text AS amount
+    FROM orders o
+    INNER JOIN order_items oi ON oi.order_id = o.id
+    INNER JOIN products p ON p.id = oi.product_id
+    LEFT JOIN categories c ON c.id = p.category_id
+    WHERE o.payment_status = '${PAYMENT_STATUS_PAID}'
+      AND (o.order_date AT TIME ZONE $1)::date >= $2::date
+      AND (o.order_date AT TIME ZONE $1)::date <= $3::date
+      AND ($4::integer IS NULL OR o.agent_id = $4)
+      AND c.id IS NOT NULL
+    GROUP BY c.id, c.name_mongolian
+    ORDER BY SUM(oi.quantity::numeric * oi.unit_price::numeric) DESC
+    LIMIT 1
+  `;
+
+  const topCategoryResult = await prisma.$queryRawUnsafe<Array<{
+    id: number;
+    name: string;
+    amount: string;
+  }>>(topCategorySql, tz, from, to, agentId ?? null);
+
+  const topCategory = topCategoryResult[0]
+    ? { id: topCategoryResult[0].id, name: topCategoryResult[0].name, amount: parseFloat(topCategoryResult[0].amount) }
+    : { id: 0, name: 'N/A', amount: 0 };
+
+  // Daily trend (last 30 days or date range)
+  const dailyTrendSql = `
+    SELECT (o.order_date AT TIME ZONE $1)::date AS date,
+      COALESCE(SUM(oi.quantity::numeric * oi.unit_price::numeric), 0)::text AS amount,
+      COALESCE(SUM(
+        CASE
+          WHEN p.units_per_box IS NOT NULL AND p.units_per_box > 0
+          THEN FLOOR(oi.quantity::numeric / p.units_per_box::numeric)
+          ELSE 0
+        END
+      ), 0)::bigint AS boxes
+    FROM orders o
+    INNER JOIN order_items oi ON oi.order_id = o.id
+    INNER JOIN products p ON p.id = oi.product_id
+    WHERE o.payment_status = '${PAYMENT_STATUS_PAID}'
+      AND (o.order_date AT TIME ZONE $1)::date >= $2::date
+      AND (o.order_date AT TIME ZONE $1)::date <= $3::date
+      AND ($4::integer IS NULL OR o.agent_id = $4)
+    GROUP BY 1
+    ORDER BY 1 ASC
+  `;
+
+  const dailyTrendResult = await prisma.$queryRawUnsafe<Array<{
+    date: Date;
+    amount: string;
+    boxes: bigint;
+  }>>(dailyTrendSql, tz, from, to, agentId ?? null);
+
+  const dailyTrend = dailyTrendResult.map(row => ({
+    date: formatBucketKey(row.date, 'day'),
+    amount: parseFloat(row.amount),
+    boxes: Number(row.boxes),
+  }));
+
+  // Achievement summary (simplified - using targets if available)
+  const achievementSummary = {
+    dailyAvg: 0,
+    monthlyAvg: 0,
+    overallPct: 0,
+  };
+
+  return {
+    totalAmount,
+    totalBoxes,
+    totalOrders,
+    avgOrderValue,
+    topAgent,
+    topProduct,
+    topCategory,
+    dailyTrend,
+    achievementSummary,
+  };
+}
+
+export async function getAgentRanking(filters: {
+  from: string;
+  to: string;
+  sortBy?: 'amount' | 'boxes' | 'orders' | 'achievement';
+}) {
+  const tz = getKpiTimezone();
+  const { from, to, sortBy = 'amount' } = filters;
+
+  const sql = `
+    SELECT e.id AS agent_id,
+      e.name AS agent_name,
+      COALESCE(SUM(oi.quantity::numeric * oi.unit_price::numeric), 0)::text AS amount,
+      COALESCE(SUM(
+        CASE
+          WHEN p.units_per_box IS NOT NULL AND p.units_per_box > 0
+          THEN FLOOR(oi.quantity::numeric / p.units_per_box::numeric)
+          ELSE 0
+        END
+      ), 0)::bigint AS boxes,
+      COUNT(DISTINCT o.id)::integer AS orders
+    FROM orders o
+    INNER JOIN order_items oi ON oi.order_id = o.id
+    INNER JOIN products p ON p.id = oi.product_id
+    INNER JOIN employees e ON e.id = o.agent_id
+    WHERE o.payment_status = '${PAYMENT_STATUS_PAID}'
+      AND (o.order_date AT TIME ZONE $1)::date >= $2::date
+      AND (o.order_date AT TIME ZONE $1)::date <= $3::date
+    GROUP BY e.id, e.name
+    ORDER BY ${sortBy === 'boxes' ? 'boxes' : sortBy === 'orders' ? 'orders' : 'amount'} DESC
+  `;
+
+  const result = await prisma.$queryRawUnsafe<Array<{
+    agent_id: number;
+    agent_name: string;
+    amount: string;
+    boxes: bigint;
+    orders: number;
+  }>>(sql, tz, from, to);
+
+  return result.map((row, index) => ({
+    rank: index + 1,
+    agentId: row.agent_id,
+    agentName: row.agent_name,
+    amount: parseFloat(row.amount),
+    boxes: Number(row.boxes),
+    orders: row.orders,
+    achievementPct: 0, // TODO: calculate from targets
+  }));
+}
+
+export async function getCategoryAnalysis(filters: {
+  from: string;
+  to: string;
+  agentId?: number;
+}) {
+  const tz = getKpiTimezone();
+  const { from, to, agentId } = filters;
+
+  const sql = `
+    SELECT c.id AS category_id,
+      c.name_mongolian AS category_name,
+      COALESCE(SUM(oi.quantity::numeric * oi.unit_price::numeric), 0)::text AS amount,
+      COALESCE(SUM(
+        CASE
+          WHEN p.units_per_box IS NOT NULL AND p.units_per_box > 0
+          THEN FLOOR(oi.quantity::numeric / p.units_per_box::numeric)
+          ELSE 0
+        END
+      ), 0)::bigint AS boxes,
+      COALESCE(SUM(oi.quantity), 0)::bigint AS units
+    FROM orders o
+    INNER JOIN order_items oi ON oi.order_id = o.id
+    INNER JOIN products p ON p.id = oi.product_id
+    LEFT JOIN categories c ON c.id = p.category_id
+    WHERE o.payment_status = '${PAYMENT_STATUS_PAID}'
+      AND (o.order_date AT TIME ZONE $1)::date >= $2::date
+      AND (o.order_date AT TIME ZONE $1)::date <= $3::date
+      AND ($4::integer IS NULL OR o.agent_id = $4)
+      AND c.id IS NOT NULL
+    GROUP BY c.id, c.name_mongolian
+    ORDER BY amount DESC
+  `;
+
+  const result = await prisma.$queryRawUnsafe<Array<{
+    category_id: number;
+    category_name: string;
+    amount: string;
+    boxes: bigint;
+    units: bigint;
+  }>>(sql, tz, from, to, agentId ?? null);
+
+  const totalAmount = result.reduce((sum, row) => sum + parseFloat(row.amount), 0);
+
+  return result.map(row => ({
+    categoryId: row.category_id,
+    categoryName: row.category_name,
+    amount: parseFloat(row.amount),
+    boxes: Number(row.boxes),
+    units: Number(row.units),
+    contributionPct: totalAmount > 0 ? (parseFloat(row.amount) / totalAmount) * 100 : 0,
+  }));
+}
+
+export async function getTrendData(filters: {
+  from: string;
+  to: string;
+  agentId?: number;
+  granularity: 'day' | 'month';
+}) {
+  const tz = getKpiTimezone();
+  const { from, to, agentId, granularity } = filters;
+  const bucket = bucketSqlExpr(granularity);
+
+  const sql = `
+    SELECT ${bucket} AS period,
+      COALESCE(SUM(oi.quantity::numeric * oi.unit_price::numeric), 0)::text AS amount,
+      COALESCE(SUM(
+        CASE
+          WHEN p.units_per_box IS NOT NULL AND p.units_per_box > 0
+          THEN FLOOR(oi.quantity::numeric / p.units_per_box::numeric)
+          ELSE 0
+        END
+      ), 0)::bigint AS boxes,
+      COUNT(DISTINCT o.id)::integer AS orders
+    FROM orders o
+    INNER JOIN order_items oi ON oi.order_id = o.id
+    INNER JOIN products p ON p.id = oi.product_id
+    WHERE o.payment_status = '${PAYMENT_STATUS_PAID}'
+      AND (o.order_date AT TIME ZONE $1)::date >= $2::date
+      AND (o.order_date AT TIME ZONE $1)::date <= $3::date
+      AND ($4::integer IS NULL OR o.agent_id = $4)
+    GROUP BY 1
+    ORDER BY 1 ASC
+  `;
+
+  const result = await prisma.$queryRawUnsafe<Array<{
+    period: Date;
+    amount: string;
+    boxes: bigint;
+    orders: number;
+  }>>(sql, tz, from, to, agentId ?? null);
+
+  return result.map(row => ({
+    period: formatBucketKey(row.period, granularity),
+    amount: parseFloat(row.amount),
+    boxes: Number(row.boxes),
+    orders: row.orders,
+    target: 0, // TODO: load from targets
+    achievementPct: 0,
+  }));
+}

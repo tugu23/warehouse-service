@@ -19,6 +19,10 @@ import {
   normalizePeriodStart,
   parseDateOnlyUtc,
   KpiGranularity,
+  getDashboardSummary,
+  getAgentRanking,
+  getCategoryAnalysis,
+  getTrendData,
 } from "../services/agent-kpi.service";
 
 function parseGranularity(q: unknown): KpiGranularity {
@@ -250,6 +254,116 @@ export const deleteAgentKpiTarget = async (
     if (Number.isNaN(id)) throw new AppError("ID буруу", 400);
     await deleteTarget(id);
     res.json({ status: "success", data: null });
+  } catch (e) {
+    next(e);
+  }
+};
+
+// New dashboard endpoints
+
+export const getAgentKpiDashboardSummary = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { from, to, agentId: agentIdQ } = req.query;
+    if (!from || !to) {
+      throw new AppError("from болон to (YYYY-MM-DD) заавал", 400);
+    }
+    const agentId = agentIdQ
+      ? assertAgentKpiAgentAccess(req, parseInt(String(agentIdQ), 10))
+      : undefined;
+
+    const summary = await getDashboardSummary({
+      from: String(from),
+      to: String(to),
+      agentId,
+    });
+
+    res.json({ status: "success", data: summary });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const getAgentKpiRanking = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    assertManagerOrAdmin(req);
+    const { from, to, sortBy } = req.query;
+    if (!from || !to) {
+      throw new AppError("from болон to (YYYY-MM-DD) заавал", 400);
+    }
+
+    const ranking = await getAgentRanking({
+      from: String(from),
+      to: String(to),
+      sortBy: sortBy as 'amount' | 'boxes' | 'orders' | 'achievement' | undefined,
+    });
+
+    res.json({ status: "success", data: { ranking } });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const getAgentKpiCategoryAnalysis = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { from, to, agentId: agentIdQ } = req.query;
+    if (!from || !to) {
+      throw new AppError("from болон to (YYYY-MM-DD) заавал", 400);
+    }
+    const agentId = agentIdQ
+      ? assertAgentKpiAgentAccess(req, parseInt(String(agentIdQ), 10))
+      : undefined;
+
+    const categories = await getCategoryAnalysis({
+      from: String(from),
+      to: String(to),
+      agentId,
+    });
+
+    res.json({ status: "success", data: { categories } });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const getAgentKpiTrendData = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { from, to, agentId: agentIdQ, granularity } = req.query;
+    if (!from || !to) {
+      throw new AppError("from болон to (YYYY-MM-DD) заавал", 400);
+    }
+    const agentId = agentIdQ
+      ? assertAgentKpiAgentAccess(req, parseInt(String(agentIdQ), 10))
+      : undefined;
+
+    const gran = String(granularity || 'day');
+    if (gran !== 'day' && gran !== 'month') {
+      throw new AppError("granularity нь day эсвэл month байх ёстой", 400);
+    }
+
+    const trend = await getTrendData({
+      from: String(from),
+      to: String(to),
+      agentId,
+      granularity: gran,
+    });
+
+    res.json({ status: "success", data: { trend } });
   } catch (e) {
     next(e);
   }
