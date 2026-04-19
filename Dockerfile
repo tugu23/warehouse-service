@@ -1,16 +1,16 @@
 # Multi-stage build for production
 
 # Stage 1: Build
-FROM node:18-alpine AS builder
+FROM node:18-slim AS builder
 
 WORKDIR /app
 
 # Install OpenSSL and build dependencies
-RUN apk add --no-cache openssl3 openssl-dev
+RUN apt-get update && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Set Prisma environment variables BEFORE generating client
-ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
-ENV PRISMA_CLIENT_ENGINE_TYPE=binary
+ENV PRISMA_CLI_QUERY_ENGINE_TYPE=library
+ENV PRISMA_CLIENT_ENGINE_TYPE=library
 
 # Copy package files
 COPY package*.json ./
@@ -29,16 +29,16 @@ RUN npx prisma generate
 RUN npm run build
 
 # Stage 2: Production
-FROM node:18-alpine AS production
+FROM node:18-slim AS production
 
 WORKDIR /app
 
 # Install OpenSSL 3 (required for Prisma)
-RUN apk add --no-cache openssl3
+RUN apt-get update && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Set Prisma environment variables
-ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
-ENV PRISMA_CLIENT_ENGINE_TYPE=binary
+ENV PRISMA_CLI_QUERY_ENGINE_TYPE=library
+ENV PRISMA_CLIENT_ENGINE_TYPE=library
 
 # Install production dependencies only
 COPY package*.json ./
@@ -60,8 +60,8 @@ COPY --from=builder /app/prisma/schema.prisma ./prisma/schema.prisma
 RUN mkdir -p logs
 
 # Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-  adduser -S nodejs -u 1001
+RUN groupadd -g 1001 nodejs && \
+  useradd -r -u 1001 -g nodejs nodejs
 
 # Change ownership
 RUN chown -R nodejs:nodejs /app
