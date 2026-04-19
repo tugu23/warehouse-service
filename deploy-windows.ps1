@@ -78,7 +78,7 @@ switch ($choice) {
         
         # Check if migrations exist
         Write-Host ""
-        $runMigration = Read-Host "Run database migrations? (y/n)"
+        $runMigration = Read-Host "Run database migrations? (recommended: y)"
         if ($runMigration -eq "y") {
             Write-Color Yellow "📊 Running migrations..."
             docker-compose exec backend npx prisma migrate deploy
@@ -86,7 +86,7 @@ switch ($choice) {
         
         # Ask about seeding
         Write-Host ""
-        $runSeed = Read-Host "Seed database with initial data? (y/n)"
+        $runSeed = Read-Host "Seed database with initial data? (ONLY for a fresh empty database) (y/n)"
         if ($runSeed -eq "y") {
             Write-Color Yellow "🌱 Seeding database..."
             docker-compose exec backend npm run seed
@@ -123,7 +123,7 @@ switch ($choice) {
         
         # Migration
         Write-Host ""
-        $runMigration = Read-Host "Run database migrations? (y/n)"
+        $runMigration = Read-Host "Run database migrations? (recommended: y)"
         if ($runMigration -eq "y") {
             docker-compose exec backend npx prisma migrate deploy
         }

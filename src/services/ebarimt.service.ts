@@ -406,7 +406,12 @@ class EBarimtService {
           sentBillCount: data.sentBillCount,
           sentAmount: data.sentAmount,
         });
-        return { ...data, success: true };
+        return {
+          success: true,
+          sentBillCount: data.sentBillCount || 0,
+          sentAmount: data.sentAmount || 0,
+          message: data.message || "Мэдээлэл амжилттай илгээгдлээ"
+        };
       } else {
         logger.warn("sendData returned unsuccessful", {
           errorCode: data.errorCode,
@@ -567,26 +572,16 @@ class EBarimtService {
 
       // Calculate totals and prepare items
       let totalVAT = 0;
-      let totalCityTax = 0;
 
       const items: EBarimtItem[] = orderData.items.map((item) => {
         const vatType = item.vatType || "VAT";
         let itemVat = 0;
-        let itemCityTax = 0;
 
         // Calculate VAT based on type (VAT is included in total)
         if (vatType === "VAT") {
           // VAT = total * 10 / 110 (extracting VAT from inclusive price)
           itemVat = Math.round((item.total * VAT_RATE / (1 + VAT_RATE)) * 100) / 100;
           totalVAT += itemVat;
-        }
-
-        // Calculate NHAT (City Tax) for Ulaanbaatar
-        if (requiresNHAT && vatType === "VAT") {
-          // City Tax = (total - VAT) * 2%
-          const baseAmount = item.total - itemVat;
-          itemCityTax = Math.round(baseAmount * CITY_TAX_RATE * 100) / 100;
-          totalCityTax += itemCityTax;
         }
 
         // Build item object, filtering out empty strings for optional fields
@@ -598,7 +593,6 @@ class EBarimtService {
           unitPrice: item.unitPrice,
           totalAmount: item.total,
           totalVAT: itemVat,
-          totalCityTax: itemCityTax,
         };
 
         // Only add optional fields if they have actual values (not empty strings)
@@ -656,7 +650,7 @@ class EBarimtService {
         branchNo: this.config.branchNo, // MUST be string (not number!)
         totalAmount: orderData.total,
         totalVAT: Math.round(totalVAT * 100) / 100,
-        totalCityTax: Math.round(totalCityTax * 100) / 100,
+        totalCityTax: 0, // НХАТ хаяна
         districtCode,
         merchantTin: this.config.merchantTin,
         posNo: this.config.posNo,
@@ -671,7 +665,7 @@ class EBarimtService {
             merchantTin: this.config.merchantTin,
             customerTin,
             totalVAT: Math.round(totalVAT * 100) / 100,
-            totalCityTax: Math.round(totalCityTax * 100) / 100,
+            totalCityTax: 0, // НХАТ хаяна
             invoiceId: null,
             bankAccountNo: "",
             iBan: "",
@@ -692,7 +686,7 @@ class EBarimtService {
         total: orderData.total,
         type: receiptType,
         districtCode,
-        hasCityTax: totalCityTax > 0,
+        hasCityTax: false,
         requestData: JSON.stringify(requestData, null, 2), // Log full request for debugging
       });
 
@@ -1263,13 +1257,16 @@ class EBarimtService {
             | "VAT_ZERO"
             | "NO_VAT") || "VAT";
 
+        // Calculate total with VAT (unitPrice is VAT-exclusive)
+        const totalWithVAT = vatType === "VAT" ? itemTotal * (1 + VAT_RATE) : itemTotal;
+
         return {
           productName: item.product.nameMongolian,
           barcode: item.product.barcode || undefined,
-          classificationCode: item.product.classificationCode || item.product.category?.classificationCode || undefined,
+          classificationCode: item.product.classificationCode || item.product.category?.classificationCode || "2399421",
           quantity: item.quantity,
           unitPrice,
-          total: itemTotal,
+          total: Math.round(totalWithVAT * 100) / 100,
           vatType,
         };
       }),

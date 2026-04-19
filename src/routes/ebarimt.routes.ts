@@ -428,6 +428,9 @@ router.post(
         );
       }
 
+      // Get customerTin from request body (optional override)
+      const { customerTin } = req.body || {};
+
       // Generate order number if not exists
       let orderNumber = order.orderNumber;
       if (!orderNumber) {
@@ -436,6 +439,11 @@ router.post(
           where: { id: order.id },
           data: { orderNumber },
         });
+      }
+
+      // Override customer registrationNumber if customerTin provided
+      if (customerTin && order.customer) {
+        order.customer.registrationNumber = customerTin;
       }
 
       // Prepare e-Barimt data with NHAT support

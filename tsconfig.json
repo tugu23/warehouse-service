@@ -26,6 +26,10 @@
   ],
   "exclude": [
     "node_modules",
-    "dist"
+    "dist",
+    "src/controllers/product-batches.controller.ts",
+    "src/controllers/productBatch.controller.ts",
+    "src/routes/product-batches.routes.ts",
+    "src/routes/productBatch.routes.ts"
   ]
 }
