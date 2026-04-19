@@ -308,7 +308,7 @@ router.put(
  *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
- *     description: Update order status (Manager/Admin only)
+ *     description: Update order status (Admin, Manager, and Sales Agents)
  *     parameters:
  *       - in: path
  *         name: id
@@ -348,7 +348,7 @@ router.put(
  */
 router.put(
   "/:id/status",
-  checkRole(["Admin", "Manager"]),
+  checkRole(["Admin", "Manager", "SalesAgent", "MarketSalesperson", "StoreSalesperson"]),
   validate([
     param("id").isInt().withMessage("Valid order ID is required"),
     body("status")
