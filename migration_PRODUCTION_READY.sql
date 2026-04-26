@@ -40,7 +40,7 @@ BEGIN;
 \i /tmp/migration_part3_customers_COMPLETE.sql
 
 -- Part 4: Products (515 records)
-\i /tmp/migration_part4_products_COMPLETE.sql
+\i /tmp/migration_part4_products_COMPLETE.sqlч
 
 -- Part 5: Product Prices (1,669 records)
 \i /tmp/migration_part5_prices_COMPLETE.sql

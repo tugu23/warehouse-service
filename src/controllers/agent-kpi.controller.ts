@@ -37,6 +37,7 @@ export const getAgentKpiSummary = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    console.log('[getAgentKpiSummary] START', req.query);
     const { from, to, agentId: agentIdQ, granularity: gQ } = req.query;
     if (!from || !to) {
       throw new AppError("from болон to (YYYY-MM-DD) заавал", 400);
@@ -45,14 +46,17 @@ export const getAgentKpiSummary = async (
       req,
       agentIdQ ? parseInt(String(agentIdQ), 10) : undefined
     );
+    console.log('[getAgentKpiSummary] Fetching summary for agent:', agentId);
     const summary = await getSummary({
       agentId,
       from: String(from),
       to: String(to),
       granularity: parseGranularity(gQ),
     });
+    console.log('[getAgentKpiSummary] Got summary, sending response');
     res.json({ status: "success", data: summary });
   } catch (e) {
+    console.error('[getAgentKpiSummary] ERROR:', e);
     next(e);
   }
 };
@@ -63,6 +67,7 @@ export const getAgentKpiByProduct = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    console.log('[getAgentKpiByProduct] START', req.query);
     const { from, to, agentId: agentIdQ } = req.query;
     if (!from || !to) {
       throw new AppError("from болон to (YYYY-MM-DD) заавал", 400);
@@ -71,7 +76,9 @@ export const getAgentKpiByProduct = async (
       req,
       agentIdQ ? parseInt(String(agentIdQ), 10) : undefined
     );
+    console.log('[getAgentKpiByProduct] Fetching products for agent:', agentId);
     const rows = await getByProduct(agentId, String(from), String(to));
+    console.log('[getAgentKpiByProduct] Got rows:', rows.length);
     const data = rows.map((r) => ({
       productId: r.product_id,
       productName: r.product_name,
@@ -80,8 +87,10 @@ export const getAgentKpiByProduct = async (
       boxes: Number(r.boxes),
       amount: parseFloat(r.amount),
     }));
+    console.log('[getAgentKpiByProduct] Sending response');
     res.json({ status: "success", data: { products: data } });
   } catch (e) {
+    console.error('[getAgentKpiByProduct] ERROR:', e);
     next(e);
   }
 };
