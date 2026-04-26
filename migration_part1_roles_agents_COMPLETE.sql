@@ -18,7 +18,7 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO customer_types (id, type_name) VALUES (1, 'Зах') ON CONFLICT (id) DO NOTHING;
 INSERT INTO customer_types (id, type_name) VALUES (2, 'Дэлгүүр') ON CONFLICT (id) DO NOTHING;
 INSERT INTO customer_types (id, type_name) VALUES (3, 'Хоум плаза') ON CONFLICT (id) DO NOTHING;
-INSERT INTO customer_types (id, type_name) VALUES (4, 'Зах2') ON CONFLICT (id) DO NOTHING;
+INSERT INTO customer_types (id, type_name) VALUES (4, 'Зах 2') ON CONFLICT (id) DO NOTHING;
 INSERT INTO customer_types (id, type_name) VALUES (5, 'Борлуулалт') ON CONFLICT (id) DO NOTHING;
 INSERT INTO customer_types (id, type_name) VALUES (6, 'Макс') ON CONFLICT (id) DO NOTHING;
 INSERT INTO customer_types (id, type_name) VALUES (7, 'Наран') ON CONFLICT (id) DO NOTHING;

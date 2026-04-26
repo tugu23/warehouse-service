@@ -79,7 +79,8 @@ if (config.nodeEnv === "development") {
 // Rate limiting for login endpoint
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === "test" ? 1000 : 5, // Higher limit for tests
+  max: process.env.NODE_ENV === "test" ? 1000 :
+       process.env.NODE_ENV === "development" ? 1000 : 5, // Much higher limit for development
   message: "Too many login attempts, please try again later",
   standardHeaders: true,
   legacyHeaders: false,

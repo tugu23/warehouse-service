@@ -31,19 +31,19 @@
 BEGIN;
 
 -- Part 1: Roles, Categories, Customer Types, Agents
-\i migration_part1_roles_agents_COMPLETE.sql
+\i /tmp/migration_part1_roles_agents_COMPLETE.sql
 
 -- Part 2: Suppliers
-\i migration_part2_suppliers_COMPLETE.sql
+\i /tmp/migration_part2_suppliers_COMPLETE.sql
 
 -- Part 3: Customers (3,686 records)
-\i migration_part3_customers_COMPLETE.sql
+\i /tmp/migration_part3_customers_COMPLETE.sql
 
 -- Part 4: Products (515 records)
-\i migration_part4_products_COMPLETE.sql
+\i /tmp/migration_part4_products_COMPLETE.sql
 
 -- Part 5: Product Prices (1,669 records)
-\i migration_part5_prices_COMPLETE.sql
+\i /tmp/migration_part5_prices_COMPLETE.sql
 
 -- Reset sequences
 SELECT setval('roles_id_seq', (SELECT MAX(id) FROM roles));

@@ -26,7 +26,7 @@ services:
 
   # Backend API
   backend:
-    image: tmshuu/warehouse-service:latest
+    image: docker.io/tmshuu/warehouse-service:latest
     container_name: warehouse-backend
     restart: unless-stopped
     environment:
@@ -66,7 +66,7 @@ services:
 
   # Frontend
   frontend:
-    image: tmshuu/warehouse-web:latest
+    image: docker.io/tmshuu/warehouse-web:latest
     container_name: warehouse-frontend
     restart: unless-stopped
     ports:
