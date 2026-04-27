@@ -35,7 +35,7 @@ services:
       DATABASE_URL: postgresql://${DB_USER:-warehouse_user}:${DB_PASSWORD:-warehouse_password}@postgres:5432/${DB_NAME:-warehouse_db}?schema=public
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080,http://localhost}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://oasiserp.mn,https://www.oasiserp.mn,http://localhost:8080,http://localhost}
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
       RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-100}
       # E-Barimt Configuration
@@ -48,6 +48,8 @@ services:
       # Prisma configuration
       PRISMA_CLI_QUERY_ENGINE_TYPE: binary
       PRISMA_CLIENT_ENGINE_TYPE: binary
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3000:3000"
     depends_on:
@@ -70,11 +72,15 @@ services:
     container_name: warehouse-frontend
     restart: unless-stopped
     environment:
-      VITE_API_BASE_URL: http://backend:3000
+      API_UPSTREAM: ${API_UPSTREAM:-http://backend:3000}
+      POSAPI_UPSTREAM: ${POSAPI_UPSTREAM:-http://host.docker.internal:7080}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8080:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - warehouse-network
 
