@@ -35,7 +35,7 @@ services:
       DATABASE_URL: postgresql://${DB_USER:-warehouse_user}:${DB_PASSWORD:-warehouse_password}@postgres:5432/${DB_NAME:-warehouse_db}?schema=public
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://oasiserp.mn}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080,http://localhost}
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
       RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-100}
       # E-Barimt Configuration
@@ -69,6 +69,8 @@ services:
     image: docker.io/tmshuu/warehouse-web:latest
     container_name: warehouse-frontend
     restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: http://backend:3000
     ports:
       - "8080:80"
     depends_on:

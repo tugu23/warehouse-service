@@ -59,7 +59,11 @@ All migration files have been generated with **COMPLETE DATA** from your old sys
 podman machine list
 
 # Create backup with timestamp inside container
-podman exec -it postgres-container pg_dump -U postgres warehouse_db > backup_$(date +%Y%m%d_%H%M%S).sql
+podman exec -it podman cp migration_part1_roles_agents_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part4_products_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql warehouse-db:/tmp/ pg_dump -U postgres warehouse_db > backup_$(date +%Y%m%d_%H%M%S).sql
 
 # OR if using docker-compose
 podman-compose exec postgres pg_dump -U postgres warehouse_db > backup_$(date +%Y%m%d_%H%M%S).sql
@@ -72,7 +76,11 @@ ls -lh backup_*.sql
 
 ```bash
 # Test connection to Podman container
-podman exec -it postgres-container psql -U postgres -d warehouse_db -c "SELECT version();"
+podman exec -it podman cp migration_part1_roles_agents_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part4_products_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql warehouse-db:/tmp/ psql -U postgres -d warehouse_db -c "SELECT version();"
 
 # OR with docker-compose
 podman-compose exec postgres psql -U postgres -d warehouse_db -c "SELECT version();"
@@ -81,7 +89,11 @@ podman-compose exec postgres psql -U postgres -d warehouse_db -c "SELECT version
 ### 3. Check Current Data (Optional)
 
 ```bash
-podman exec -it postgres-container psql -U postgres -d warehouse_db -c "
+podman exec -it podman cp migration_part1_roles_agents_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part4_products_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql warehouse-db:/tmp/ psql -U postgres -d warehouse_db -c "
 SELECT 'customers' as table_name, COUNT(*) FROM customers
 UNION ALL SELECT 'products', COUNT(*) FROM products
 UNION ALL SELECT 'suppliers', COUNT(*) FROM suppliers;
@@ -98,7 +110,11 @@ UNION ALL SELECT 'suppliers', COUNT(*) FROM suppliers;
 cd /Users/tuguldur/warehouse-service
 
 # Copy migration files into container
-podman cp migration_PRODUCTION_READY.sql postgres-container:/tmp/
+podman cp migration_PRODUCTION_READY.sql podman cp migration_part1_roles_agents_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part4_products_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql warehouse-db:/tmp/:/tmp/
 podman cp migration_part1_roles_agents_COMPLETE.sql postgres-container:/tmp/
 podman cp migration_part2_suppliers_COMPLETE.sql postgres-container:/tmp/
 podman cp migration_part3_customers_COMPLETE.sql postgres-container:/tmp/
@@ -132,26 +148,66 @@ This will:
 cd /Users/tuguldur/warehouse-service
 
 # Copy all files first
-podman cp migration_part1_roles_agents_COMPLETE.sql postgres-container:/tmp/
-podman cp migration_part2_suppliers_COMPLETE.sql postgres-container:/tmp/
-podman cp migration_part3_customers_COMPLETE.sql postgres-container:/tmp/
-podman cp migration_part4_products_COMPLETE.sql postgres-container:/tmp/
-podman cp migration_part5_prices_COMPLETE.sql postgres-container:/tmp/
+podman cp migration_part1_roles_agents_COMPLETE.sql podman cp migration_part1_roles_agents_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part4_products_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql warehouse-db:/tmp/:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql podman cp migration_part1_roles_agents_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part4_products_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql warehouse-db:/tmp/:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql podman cp migration_part1_roles_agents_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part4_products_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql warehouse-db:/tmp/:/tmp/
+podman cp migration_part4_products_COMPLETE.sql podman cp migration_part1_roles_agents_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part4_products_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql warehouse-db:/tmp/:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql podman cp migration_part1_roles_agents_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part4_products_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql warehouse-db:/tmp/:/tmp/
 
 # Part 1: Roles, Customer Types, Agents
-podman exec -it postgres-container psql -U postgres -d warehouse_db -f /tmp/migration_part1_roles_agents_COMPLETE.sql
+podman exec -it podman cp migration_part1_roles_agents_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part4_products_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql warehouse-db:/tmp/ psql -U postgres -d warehouse_db -f /tmp/migration_part1_roles_agents_COMPLETE.sql
 
 # Part 2: Suppliers
-podman exec -it postgres-container psql -U postgres -d warehouse_db -f /tmp/migration_part2_suppliers_COMPLETE.sql
+podman exec -it podman cp migration_part1_roles_agents_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part4_products_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql warehouse-db:/tmp/ psql -U postgres -d warehouse_db -f /tmp/migration_part2_suppliers_COMPLETE.sql
 
 # Part 3: Customers (takes longest - 3,686 records)
-podman exec -it postgres-container psql -U postgres -d warehouse_db -f /tmp/migration_part3_customers_COMPLETE.sql
+podman exec -it podman cp migration_part1_roles_agents_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part4_products_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql warehouse-db:/tmp/ psql -U postgres -d warehouse_db -f /tmp/migration_part3_customers_COMPLETE.sql
 
 # Part 4: Products
-podman exec -it postgres-container psql -U postgres -d warehouse_db -f /tmp/migration_part4_products_COMPLETE.sql
+podman exec -it podman cp migration_part1_roles_agents_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part4_products_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql warehouse-db:/tmp/ psql -U postgres -d warehouse_db -f /tmp/migration_part4_products_COMPLETE.sql
 
 # Part 5: Product Prices
-podman exec -it postgres-container psql -U postgres -d warehouse_db -f /tmp/migration_part5_prices_COMPLETE.sql
+podman exec -it podman cp migration_part1_roles_agents_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part4_products_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql warehouse-db:/tmp/ psql -U postgres -d warehouse_db -f /tmp/migration_part5_prices_COMPLETE.sql
 ```
 
 ---
@@ -162,7 +218,11 @@ After migration completes, verify the results:
 
 ```bash
 # Check record counts inside Podman container
-podman exec -it postgres-container psql -U postgres -d warehouse_db -c "
+podman exec -it podman cp migration_part1_roles_agents_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part4_products_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql warehouse-db:/tmp/ psql -U postgres -d warehouse_db -c "
 SELECT 'Roles' as table_name, COUNT(*) as count FROM roles
 UNION ALL SELECT 'Customer Types', COUNT(*) FROM customer_types
 UNION ALL SELECT 'Categories', COUNT(*) FROM categories
@@ -190,14 +250,22 @@ Product Prices: 1669
 
 ```bash
 # Orphaned customers by type
-podman exec -it postgres-container psql -U postgres -d warehouse_db -c "
+podman exec -it podman cp migration_part1_roles_agents_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part4_products_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql warehouse-db:/tmp/ psql -U postgres -d warehouse_db -c "
 SELECT COUNT(*) as orphaned_by_type
 FROM customers
 WHERE customer_type_id NOT IN (SELECT id FROM customer_types);
 "
 
 # Orphaned customers by agent
-podman exec -it postgres-container psql -U postgres -d warehouse_db -c "
+podman exec -it podman cp migration_part1_roles_agents_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part4_products_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql warehouse-db:/tmp/ psql -U postgres -d warehouse_db -c "
 SELECT COUNT(*) as orphaned_by_agent
 FROM customers
 WHERE assigned_agent_id IS NOT NULL
@@ -205,7 +273,11 @@ WHERE assigned_agent_id IS NOT NULL
 "
 
 # Orphaned products by supplier
-podman exec -it postgres-container psql -U postgres -d warehouse_db -c "
+podman exec -it podman cp migration_part1_roles_agents_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part4_products_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql warehouse-db:/tmp/ psql -U postgres -d warehouse_db -c "
 SELECT COUNT(*) as orphaned_by_supplier
 FROM products
 WHERE supplier_id IS NOT NULL
@@ -246,7 +318,11 @@ If something goes wrong:
 # Stop the migration (Ctrl+C if still running)
 
 # Restore from backup inside Podman container
-podman exec -i postgres-container psql -U postgres -d warehouse_db < backup_YYYYMMDD_HHMMSS.sql
+podman exec -i podman cp migration_part1_roles_agents_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part2_suppliers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part3_customers_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part4_products_COMPLETE.sql warehouse-db:/tmp/
+podman cp migration_part5_prices_COMPLETE.sql warehouse-db:/tmp/ psql -U postgres -d warehouse_db < backup_YYYYMMDD_HHMMSS.sql
 
 # OR with docker-compose
 podman-compose exec -T postgres psql -U postgres -d warehouse_db < backup_YYYYMMDD_HHMMSS.sql
