@@ -27,7 +27,7 @@ export const config = {
     mockMode: process.env.POS_API_MOCK_MODE === "true",
   },
   ebarimt: {
-    apiUrl: process.env.EBARIMT_API_URL || "https://api.ebarimt.mn/api",
+    apiUrl: process.env.EBARIMT_API_URL || "http://43.231.115.209:7080",
     posNo: process.env.EBARIMT_POS_NO || "",
     merchantTin: process.env.EBARIMT_MERCHANT_TIN || "",
     apiKey: process.env.EBARIMT_API_KEY || "",

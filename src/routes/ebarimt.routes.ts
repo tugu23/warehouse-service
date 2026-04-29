@@ -430,6 +430,45 @@ router.post(
 
       // Get customerTin from request body (optional override)
       const { customerTin } = req.body || {};
+      const rawRegistrationNumber = order.customer?.registrationNumber?.trim() || "";
+      const rawRegistrationDigits = rawRegistrationNumber.replace(/\D/g, "");
+      let resolvedCustomerTin =
+        typeof customerTin === "string" && customerTin.trim()
+          ? customerTin.trim()
+          : null;
+
+      // If only 7-digit organization regNo is available, resolve TIN automatically.
+      if (!resolvedCustomerTin && /^\d{7}$/.test(rawRegistrationDigits)) {
+        try {
+          const tinResponse = await fetch(
+            `https://api.ebarimt.mn/api/info/check/getTinInfo?regNo=${rawRegistrationDigits}`
+          );
+
+          if (tinResponse.ok) {
+            const tinData = (await tinResponse.json()) as {
+              status?: number;
+              data?: string | number;
+            };
+            if (tinData?.status === 200 && tinData?.data) {
+              resolvedCustomerTin = String(tinData.data).trim();
+              logger.info("Resolved customer TIN from 7-digit registration number", {
+                orderId: order.id,
+                regNo: rawRegistrationDigits,
+                tin: resolvedCustomerTin,
+              });
+            }
+          }
+        } catch (resolveError) {
+          logger.warn("Failed to resolve customer TIN from registration number", {
+            orderId: order.id,
+            regNo: rawRegistrationDigits,
+            error:
+              resolveError instanceof Error
+                ? resolveError.message
+                : String(resolveError),
+          });
+        }
+      }
 
       // Generate order number if not exists
       let orderNumber = order.orderNumber;
@@ -441,9 +480,13 @@ router.post(
         });
       }
 
-      // Override customer registrationNumber if customerTin provided
-      if (customerTin && order.customer) {
-        order.customer.registrationNumber = customerTin;
+      // Use a valid TIN for B2B; otherwise downgrade to B2C to avoid invalid B2B requests.
+      if (order.customer) {
+        if (resolvedCustomerTin) {
+          order.customer.registrationNumber = resolvedCustomerTin;
+        } else if (!/^\d{11,14}$/.test(rawRegistrationDigits)) {
+          order.customer.registrationNumber = null;
+        }
       }
 
       // Prepare e-Barimt data with NHAT support
@@ -483,12 +526,14 @@ router.post(
             lottery: isB2B ? undefined : result.lottery,
             qrData: result.qrData,
             isB2B,
+            totalVAT: ebarimtData.vat,
+            totalAmount: ebarimtData.total,
             message: result.message,
           },
         });
       } else {
         throw new AppError(
-          `E-Barimt registration failed: ${result.message}`,
+          `E-Barimt registration failed: ${result.errorMessage || result.message}`,
           500
         );
       }

@@ -93,11 +93,12 @@ export const getAllCustomers = async (
     const registrationNumber = req.query.registrationNumber as string;
     const isVatPayer = req.query.isVatPayer as string;
     const search = req.query.search as string;
+    const forOrder = req.query.forOrder === "true";
 
     const where: any = {};
 
     // Sales agents can only see their assigned customers
-    if (authReq.user?.role === "SalesAgent") {
+    if (authReq.user?.role === "SalesAgent" && !forOrder) {
       where.assignedAgentId = authReq.user.userId;
     }
 

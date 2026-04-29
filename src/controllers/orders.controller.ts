@@ -81,7 +81,7 @@ export const createOrder = async (
       }
 
       // Validate stock availability and calculate total
-      let subtotalAmount = new Prisma.Decimal(0);
+      let grossAmount = new Prisma.Decimal(0);
       const orderItemsData = [];
 
       for (const item of items) {
@@ -136,7 +136,7 @@ export const createOrder = async (
         const itemTotal = new Prisma.Decimal(unitPrice.toString()).mul(
           item.quantity
         );
-        subtotalAmount = subtotalAmount.add(itemTotal);
+        grossAmount = grossAmount.add(itemTotal);
 
         orderItemsData.push({
           productId: item.productId,
@@ -190,9 +190,9 @@ export const createOrder = async (
         }
       }
 
-      // Calculate VAT for all orders (both Market and Store) (10%)
-      // Market vs Store only affects product pricing, not VAT calculation
-      const vatCalc = vatService.addVAT(subtotalAmount);
+      // Stored item prices are VAT-included. Split them into subtotal/VAT here.
+      const vatCalc = vatService.extractVAT(grossAmount);
+      const subtotalAmount = vatCalc.subtotal;
       const vatAmount = vatCalc.vat;
       const totalAmount = vatCalc.total;
 
@@ -305,11 +305,6 @@ export const getAllOrders = async (
 
     const where: any = {};
 
-    // Sales agents can only see their own orders
-    if (authReq.user?.role === "SalesAgent") {
-      where.agentId = authReq.user.userId;
-    }
-
     if (status) {
       where.status = status;
     }
@@ -417,14 +412,6 @@ export const getOrderById = async (
       throw new AppError(req.t.orders.notFound, 404);
     }
 
-    // Sales agents can only see their own orders
-    if (
-      authReq.user?.role === "SalesAgent" &&
-      order.agentId !== authReq.user.userId
-    ) {
-      throw new AppError(req.t.auth.forbidden, 403);
-    }
-
     // Add aliases for frontend compatibility
     const orderWithAliases = {
       ...order,
@@ -504,7 +491,7 @@ export const updateOrder = async (
 
       await tx.orderItem.deleteMany({ where: { orderId } });
 
-      let subtotalAmount = new Prisma.Decimal(0);
+      let grossAmount = new Prisma.Decimal(0);
       const orderItemsData: { productId: number; quantity: number; unitPrice: Prisma.Decimal }[] = [];
 
       for (const item of items) {
@@ -545,7 +532,7 @@ export const updateOrder = async (
           productName: product.nameMongolian,
         });
 
-        subtotalAmount = subtotalAmount.add(new Prisma.Decimal(unitPrice.toString()).mul(item.quantity));
+        grossAmount = grossAmount.add(new Prisma.Decimal(unitPrice.toString()).mul(item.quantity));
         orderItemsData.push({ productId: item.productId, quantity: item.quantity, unitPrice });
 
         await tx.product.update({
@@ -554,7 +541,8 @@ export const updateOrder = async (
         });
       }
 
-      const vatCalc = vatService.addVAT(subtotalAmount);
+      const vatCalc = vatService.extractVAT(grossAmount);
+      const subtotalAmount = vatCalc.subtotal;
       const vatAmount = vatCalc.vat;
       const totalAmount = vatCalc.total;
 

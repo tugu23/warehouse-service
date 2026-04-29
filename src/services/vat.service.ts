@@ -45,7 +45,8 @@ export const addVAT = (
 };
 
 /**
- * Calculate subtotal and VAT from a total amount (reverse calculation)
+ * Calculate subtotal and VAT from a VAT-included total amount
+ * Formula: VAT = (total / 1.1) * rate, subtotal = total - VAT
  * @param total - The total amount including VAT
  * @param rate - VAT rate (default: 10%)
  * @returns Object with subtotal, vat, and total
@@ -55,9 +56,10 @@ export const extractVAT = (
   rate: number = DEFAULT_VAT_RATE
 ): VATCalculation => {
   const totalDecimal = new Prisma.Decimal(total.toString());
-  const divisor = new Prisma.Decimal(1 + rate);
-  const subtotalDecimal = totalDecimal.div(divisor);
-  const vatAmount = totalDecimal.sub(subtotalDecimal);
+  const rateDecimal = new Prisma.Decimal(rate);
+  const divisor = new Prisma.Decimal("1").add(rateDecimal); // 1 + 0.1 = 1.1
+  const vatAmount = totalDecimal.div(divisor).mul(rateDecimal); // (total / 1.1) * 0.1
+  const subtotalDecimal = totalDecimal.sub(vatAmount);
 
   return {
     subtotal: subtotalDecimal,

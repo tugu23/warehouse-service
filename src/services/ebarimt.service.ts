@@ -56,6 +56,7 @@ interface EBarimtRequest {
   consumerNo?: string; // Customer's eBarimt app registration number (8-digit)
   type: "B2C_RECEIPT" | "B2B_RECEIPT" | "B2C_INVOICE" | "B2B_INVOICE" | "STOCK_QR";
   inactiveId?: string | null; // For return receipts
+  invoiceId?: string | null;
   reportMonth?: string | null; // YYYYMM format for supplement
   billIdSuffix?: string;
   data?: Record<string, unknown>;
@@ -188,11 +189,11 @@ class EBarimtService {
 
   constructor() {
     // Configuration from environment variables
-    // Official eBarimt API runs on localhost:7080
+    // Default PosAPI upstream
     this.config = {
-      apiUrl: process.env.EBARIMT_API_URL || "http://192.168.1.213:7080",
-      posNo: process.env.EBARIMT_POS_NO || "10014457",
-      merchantTin: process.env.EBARIMT_MERCHANT_TIN || process.env.EBARIMT_REG_NO || "37900846788",
+      apiUrl: process.env.EBARIMT_API_URL || "http://43.231.115.209:7080",
+      posNo: process.env.EBARIMT_POS_NO || "10047931",
+      merchantTin: process.env.EBARIMT_MERCHANT_TIN || process.env.EBARIMT_REG_NO || "89001226559",
       apiKey: process.env.EBARIMT_API_KEY,
       districtCode: process.env.EBARIMT_DISTRICT_CODE || "2506", // Default: Сүхбаатар (4-digit)
       branchNo: (process.env.EBARIMT_BRANCH_NO || "1").toString().padStart(3, "0"), // 3-digit string like "001"
@@ -559,11 +560,6 @@ class EBarimtService {
       // Map payment method to E-Barimt payment code
       const paymentCode = this.mapPaymentMethod(orderData.paymentMethod);
 
-      // Determine receipt type (B2C or B2B)
-      const receiptType = orderData.customer.registrationNumber
-        ? "B2B_RECEIPT"
-        : "B2C_RECEIPT";
-
       // Get district code (for NHAT calculation)
       const districtCode = orderData.districtCode || this.config.districtCode;
 
@@ -577,10 +573,10 @@ class EBarimtService {
         const vatType = item.vatType || "VAT";
         let itemVat = 0;
 
-        // Calculate VAT based on type (VAT is included in total)
+        // Calculate VAT from the stored VAT-included amount
+        // Formula: VAT = Total - (Total / 1.1) = Total * (0.1 / 1.1)
         if (vatType === "VAT") {
-          // VAT = total * 10 / 110 (extracting VAT from inclusive price)
-          itemVat = Math.round((item.total * VAT_RATE / (1 + VAT_RATE)) * 100) / 100;
+          itemVat = Math.round((item.total / 1.1) * VAT_RATE * 100) / 100;
           totalVAT += itemVat;
         }
 
@@ -641,9 +637,11 @@ class EBarimtService {
         }
       }
 
+      // Determine receipt type only after validating customerTin.
+      const receiptType = customerTin ? "B2B_RECEIPT" : "B2C_RECEIPT";
+
       // consumerNo is the customer's eBarimt app registration number (8-digit)
-      // Only pass if explicitly provided; do NOT generate from order number
-      const consumerNo = receiptType === "B2C_RECEIPT" ? orderData.consumerNo : undefined;
+      const consumerNo = receiptType === "B2C_RECEIPT" ? orderData.consumerNo ?? "" : undefined;
 
       // Prepare request data using official API format
       const requestData: EBarimtRequest = {
@@ -655,9 +653,12 @@ class EBarimtService {
         merchantTin: this.config.merchantTin,
         posNo: this.config.posNo,
         customerTin,
-        consumerNo,
         type: receiptType,
+        inactiveId: null,
+        invoiceId: null,
         reportMonth: orderData.reportMonth ?? null,
+        billIdSuffix: "01",
+        ...(receiptType === "B2C_RECEIPT" ? { consumerNo } : {}),
         receipts: [
           {
             totalAmount: orderData.total,
@@ -764,11 +765,16 @@ class EBarimtService {
         });
       }
 
-      return {
-        success: false,
+          return {
+            success: false,
         message: "Failed to register with E-Barimt",
-        errorCode: "API_ERROR",
-        errorMessage: error instanceof Error ? error.message : "Unknown error",
+            errorCode: "API_ERROR",
+        errorMessage:
+          axios.isAxiosError(error) && error.response?.data
+            ? JSON.stringify(error.response.data)
+            : error instanceof Error
+              ? error.message
+              : "Unknown error",
       };
     }
   }
@@ -828,6 +834,15 @@ class EBarimtService {
     try {
       logger.info("Returning receipt in E-Barimt", { billId, date, reason });
 
+      // Convert ISO date to POS API format: "2006-01-02 15:04:05"
+      let formattedDate: string | undefined;
+      if (date) {
+        const d = new Date(date);
+        formattedDate = d.toISOString()
+          .replace('T', ' ')
+          .replace(/\.\d{3}Z$/, '');
+      }
+
       // Official API uses DELETE /rest/receipt with { id, date } in body
       const response = await this.client.delete<{
         success: boolean;
@@ -838,7 +853,7 @@ class EBarimtService {
       }>(`/rest/receipt`, {
         data: {
           id: billId,
-          ...(date ? { date } : {}),
+          ...(formattedDate ? { date: formattedDate } : {}),
         },
       });
 
@@ -1222,23 +1237,11 @@ class EBarimtService {
       order.districtCode ||
       order.customer?.district ||
       this.config.districtCode;
-    const requiresNHAT = this.isUlaanbaatarDistrict(districtCode);
 
-    // Calculate with VAT and NHAT
-    let subtotal: number;
-    let vat: number;
+    // Stored order total is VAT-included final amount.
+    const vat = total * VAT_RATE;
+    const subtotal = total - vat;
     let cityTax = 0;
-
-    if (requiresNHAT) {
-      // Total = subtotal * (1 + VAT_RATE + CITY_TAX_RATE)
-      subtotal = total / (1 + VAT_RATE + CITY_TAX_RATE);
-      vat = subtotal * VAT_RATE;
-      cityTax = subtotal * CITY_TAX_RATE;
-    } else {
-      // Total = subtotal * (1 + VAT_RATE)
-      subtotal = total / (1 + VAT_RATE);
-      vat = total - subtotal;
-    }
 
     return {
       orderNumber: order.orderNumber,
@@ -1257,16 +1260,13 @@ class EBarimtService {
             | "VAT_ZERO"
             | "NO_VAT") || "VAT";
 
-        // Calculate total with VAT (unitPrice is VAT-exclusive)
-        const totalWithVAT = vatType === "VAT" ? itemTotal * (1 + VAT_RATE) : itemTotal;
-
         return {
           productName: item.product.nameMongolian,
           barcode: item.product.barcode || undefined,
           classificationCode: item.product.classificationCode || item.product.category?.classificationCode || "2399421",
           quantity: item.quantity,
           unitPrice,
-          total: Math.round(totalWithVAT * 100) / 100,
+          total: Math.round(itemTotal * 100) / 100,
           vatType,
         };
       }),
@@ -1308,6 +1308,7 @@ class EBarimtService {
     lottery?: string;
     qrData?: string;
     message?: string;
+    errorMessage?: string;
   }> {
     const result = await this.registerReceipt(data);
 
@@ -1325,6 +1326,7 @@ class EBarimtService {
     return {
       success: false,
       message: result.message || result.errorMessage || "Registration failed",
+      errorMessage: result.errorMessage,
     };
   }
 
