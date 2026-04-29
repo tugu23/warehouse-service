@@ -158,7 +158,6 @@ router.post(
  */
 router.get(
   "/",
-  checkRole(["Admin", "Manager", "SalesAgent"]), // Agents can view employee list
   getAllEmployees
 );
 
@@ -193,7 +192,6 @@ router.get(
  */
 router.get(
   "/:id",
-  checkRole(["Admin", "Manager", "SalesAgent"]), // Agents can view employee details
   validate([param("id").isInt().withMessage("Valid employee ID is required")]),
   getEmployeeById
 );

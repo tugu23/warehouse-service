@@ -108,7 +108,7 @@ const generalLimiter = rateLimit({
 // Only apply rate limiting in non-test environments
 if (process.env.NODE_ENV !== "test") {
   app.use("/api", generalLimiter);
-  app.use("/api/auth/login", loginLimiter);
+  // app.use("/api/auth/login", loginLimiter); // Disabled login rate limiting
 }
 
 // Health check endpoint

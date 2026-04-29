@@ -387,7 +387,6 @@ router.get(
  */
 router.post(
   "/register/:orderId",
-  checkRole(["Admin", "Manager", "Cashier"]),
   validate([
     param("orderId").isInt().withMessage("Valid order ID is required"),
   ]),

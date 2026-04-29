@@ -119,7 +119,6 @@ router.use(authMiddleware);
  */
 router.post(
   "/",
-  checkRole(["Admin", "Manager", "SalesAgent"]),
   validate([
     body("name").notEmpty().withMessage("Customer name is required"),
     body("realName").optional().isString(),
@@ -256,7 +255,6 @@ router.get(
  */
 router.put(
   "/:id",
-  checkRole(["Admin", "Manager"]),
   validate([
     param("id").isInt().withMessage("Valid customer ID is required"),
     body("name").optional().notEmpty(),

@@ -121,7 +121,10 @@ export const getAllEmployees = async (
           name: emp.name,
           email: emp.email,
           phoneNumber: emp.phoneNumber,
-          role: emp.role.name,
+          role: {
+            id: emp.role.id,
+            name: emp.role.name,
+          },
           isActive: emp.isActive,
           createdAt: emp.createdAt,
         })),

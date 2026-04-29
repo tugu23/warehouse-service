@@ -128,13 +128,6 @@ router.use(authMiddleware);
  */
 router.post(
   "/",
-  checkRole([
-    "Admin",
-    "Manager",
-    "SalesAgent",
-    "MarketSalesperson",
-    "StoreSalesperson",
-  ]),
   validate([
     body("customerId").isInt().withMessage("Valid customer ID is required"),
     body("items")
@@ -246,13 +239,6 @@ router.get(
 
 router.put(
   "/:id",
-  checkRole([
-    "Admin",
-    "Manager",
-    "SalesAgent",
-    "MarketSalesperson",
-    "StoreSalesperson",
-  ]),
   validate([
     param("id").isInt().withMessage("Valid order ID is required"),
     body("customerId").isInt().withMessage("Valid customer ID is required"),
@@ -348,7 +334,6 @@ router.put(
  */
 router.put(
   "/:id/status",
-  checkRole(["Admin", "Manager", "SalesAgent", "MarketSalesperson", "StoreSalesperson"]),
   validate([
     param("id").isInt().withMessage("Valid order ID is required"),
     body("status")
@@ -399,13 +384,6 @@ router.put(
  */
 router.put(
   "/:id/ebarimt",
-  checkRole([
-    "Admin",
-    "Manager",
-    "SalesAgent",
-    "MarketSalesperson",
-    "StoreSalesperson",
-  ]),
   validate([
     param("id").isInt().withMessage("Valid order ID is required"),
     body("ebarimtId").isString().withMessage("ebarimtId is required"),
@@ -549,7 +527,6 @@ router.get("/store", getStoreOrders);
 // Mark eBarimt as returned after frontend POS DELETE succeeded
 router.post(
   "/:id/ebarimt-return-done",
-  checkRole(["Admin", "Manager", "StoreSalesperson"]),
   validate([
     param("id").isInt().withMessage("Valid order ID is required"),
     body("returnId").isString().withMessage("returnId is required"),

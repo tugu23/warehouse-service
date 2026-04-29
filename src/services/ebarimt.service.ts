@@ -832,8 +832,6 @@ class EBarimtService {
     }
 
     try {
-      logger.info("Returning receipt in E-Barimt", { billId, date, reason });
-
       // Convert ISO date to POS API format: "2006-01-02 15:04:05"
       let formattedDate: string | undefined;
       if (date) {
@@ -842,6 +840,8 @@ class EBarimtService {
           .replace('T', ' ')
           .replace(/\.\d{3}Z$/, '');
       }
+
+      logger.info("Returning receipt in E-Barimt", { billId, date: formattedDate, reason });
 
       // Official API uses DELETE /rest/receipt with { id, date } in body
       const response = await this.client.delete<{
@@ -875,11 +875,7 @@ class EBarimtService {
             ? "Баримт буцаалт хүлээгдэж байна. Иргэн ИБАРИМТ аппликейшнээс зөвшөөрөх шаардлагатай."
             : "Баримт амжилттай идэвхгүй болгогдлоо",
           data: {
-            id: billId,
-            billId: billId,
-            date: new Date().toISOString(),
-            lottery: "",
-            qrData: "",
+            id: billId // Use original bill ID as return confirmation
           },
         };
       }
