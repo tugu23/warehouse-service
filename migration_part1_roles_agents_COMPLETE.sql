@@ -42,6 +42,11 @@ INSERT INTO customer_types (id, type_name) VALUES (24, 'CU') ON CONFLICT (id) DO
 INSERT INTO customer_types (id, type_name) VALUES (25, 'Наш') ON CONFLICT (id) DO NOTHING;
 
 -- Create agents/employees
+-- Admin user (password: admin123)
+INSERT INTO employees (id, name, email, phone_number, password_hash, role_id, is_active)
+VALUES (1, 'Admin User', 'admin@warehouse.com', '99999999', '$2a$10$DWcInF146WIYO2kwkNPVC.RWLeM33CGPmkRT0PuD12O2k5B17qhvq', (SELECT id FROM roles WHERE name = 'Admin'), true)
+ON CONFLICT (id) DO NOTHING;
+
 INSERT INTO employees (id, name, email, phone_number, password_hash, role_id, is_active)
 VALUES (6, 'Мөнхцэцэг', 'agent6@warehouse.mn', '88048350', '$2b$10$rKzZvFJwWqKqZQQqZQQqZeJ5vZQqZQqZQqZQqZQqZQqZQqZQqZQ', (SELECT id FROM roles WHERE name = 'Agent'), true)
 ON CONFLICT (id) DO NOTHING;

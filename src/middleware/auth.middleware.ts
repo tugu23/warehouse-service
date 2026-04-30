@@ -76,7 +76,7 @@ export const checkRole = (allowedRoles: string[]) => {
         return;
       }
 
-      if (!allowedRoles.includes(authReq.user.role)) {
+      if (!allowedRoles.map(r => r.toUpperCase()).includes(authReq.user.role.toUpperCase())) {
         res.status(403).json({
           status: "error",
           message: "You do not have permission to access this resource",
