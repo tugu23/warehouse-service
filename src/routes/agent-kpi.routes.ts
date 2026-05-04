@@ -18,13 +18,7 @@ import {
 
 const router = Router();
 
-const agentKpiReaders = [
-  "Admin",
-  "Manager",
-  "SalesAgent",
-  "MarketSalesperson",
-  "StoreSalesperson",
-];
+const agentKpiReaders = ["Admin"];
 
 router.use(authMiddleware);
 
@@ -57,7 +51,7 @@ router.get(
 
 router.get(
   "/multi-agent-daily",
-  checkRole(["Admin", "Manager"]),
+  checkRole(["Admin"]),
   [dateQuery("date")],
   validate,
   getAgentKpiMultiAgentDaily
@@ -73,7 +67,7 @@ router.get(
 
 router.post(
   "/targets",
-  checkRole(["Admin", "Manager"]),
+  checkRole(["Admin"]),
   [
     body("employeeId").isInt(),
     body("periodType").isIn(["DAY", "MONTH", "YEAR"]),
@@ -87,7 +81,7 @@ router.post(
 
 router.patch(
   "/targets/:id",
-  checkRole(["Admin", "Manager"]),
+  checkRole(["Admin"]),
   [param("id").isInt()],
   validate,
   patchAgentKpiTarget
@@ -95,7 +89,7 @@ router.patch(
 
 router.delete(
   "/targets/:id",
-  checkRole(["Admin", "Manager"]),
+  checkRole(["Admin"]),
   [param("id").isInt()],
   validate,
   deleteAgentKpiTarget
@@ -116,7 +110,7 @@ router.get(
 
 router.get(
   "/ranking",
-  checkRole(["Admin", "Manager"]),
+  checkRole(["Admin"]),
   [
     dateQuery("from"),
     dateQuery("to"),
