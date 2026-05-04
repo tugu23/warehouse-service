@@ -186,6 +186,7 @@ class EBarimtService {
   private client: AxiosInstance;
   private config: EBarimtConfig;
   private isEnabled: boolean;
+  private readonly appTimezone: string;
 
   constructor() {
     // Configuration from environment variables
@@ -199,6 +200,7 @@ class EBarimtService {
       branchNo: (process.env.EBARIMT_BRANCH_NO || "1").toString().padStart(3, "0"), // 3-digit string like "001"
       macAddress: process.env.EBARIMT_MAC_ADDRESS,
     };
+    this.appTimezone = process.env.APP_TIMEZONE || "Asia/Ulaanbaatar";
 
     // Enable/disable E-Barimt based on configuration
     this.isEnabled =
@@ -284,6 +286,8 @@ class EBarimtService {
     };
     warningMessage?: string;
     shouldSendNow?: boolean;
+    billCount?: number;
+    billAmount?: number;
     message?: string;
     errorCode?: string;
   }> {
@@ -346,6 +350,8 @@ class EBarimtService {
         paymentTypes: data.paymentTypes,
         merchants: data.merchants,
         condition: data.condition,
+        billCount: data.billCount,
+        billAmount: data.billAmount,
         warningMessage: warningMessage.trim() || undefined,
         shouldSendNow: shouldSendNow || lotteryWarning,
         message: "Information retrieved successfully",
@@ -832,16 +838,15 @@ class EBarimtService {
     }
 
     try {
-      // Convert ISO date to POS API format: "2006-01-02 15:04:05"
-      let formattedDate: string | undefined;
-      if (date) {
-        const d = new Date(date);
-        formattedDate = d.toISOString()
-          .replace('T', ' ')
-          .replace(/\.\d{3}Z$/, '');
-      }
-
-      logger.info("Returning receipt in E-Barimt", { billId, date: formattedDate, reason });
+      const formattedDate = date
+        ? this.formatPosApiDate(date)
+        : undefined;
+      logger.info("Returning receipt in E-Barimt", {
+        billId,
+        date,
+        formattedDate,
+        reason,
+      });
 
       // Official API uses DELETE /rest/receipt with { id, date } in body
       const response = await this.client.delete<{
@@ -875,7 +880,11 @@ class EBarimtService {
             ? "Баримт буцаалт хүлээгдэж байна. Иргэн ИБАРИМТ аппликейшнээс зөвшөөрөх шаардлагатай."
             : "Баримт амжилттай идэвхгүй болгогдлоо",
           data: {
-            id: billId // Use original bill ID as return confirmation
+            id: billId,
+            billId: billId,
+            date: "",
+            lottery: "",
+            qrData: ""
           },
         };
       }
@@ -1301,6 +1310,7 @@ class EBarimtService {
     success: boolean;
     id?: string;
     billId?: string;
+    date?: string;
     lottery?: string;
     qrData?: string;
     message?: string;
@@ -1313,6 +1323,7 @@ class EBarimtService {
         success: true,
         id: result.data.id,
         billId: result.data.billId,
+        date: result.data.date,
         lottery: result.data.lottery,
         qrData: result.data.qrData,
         message: "Bill registered successfully",
@@ -1400,6 +1411,30 @@ class EBarimtService {
       return 0;
     }
     return Math.round(amount * CITY_TAX_RATE * 100) / 100;
+  }
+
+  private formatPosApiDate(input: string): string {
+    const date = new Date(input);
+    if (Number.isNaN(date.getTime())) {
+      return input;
+    }
+
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: this.appTimezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    });
+
+    const parts = formatter.formatToParts(date);
+    const get = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((part) => part.type === type)?.value || "";
+
+    return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")}`;
   }
 
   /**

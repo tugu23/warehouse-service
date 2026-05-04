@@ -126,6 +126,7 @@ router.post(
       res.json({
         status: result.success ? "success" : "error",
         data: {
+          success: result.success,
           sentBillCount: result.sentBillCount,
           sentAmount: result.sentAmount,
           message: result.message,
@@ -168,6 +169,7 @@ router.post(
       res.json({
         status: result.success ? "success" : "error",
         data: {
+          success: result.success,
           sentBillCount: result.sentBillCount,
           sentAmount: result.sentAmount,
           message: result.message,
@@ -498,6 +500,11 @@ router.post(
       const result = await ebarimtService.registerBill(ebarimtData);
 
       if (result.success) {
+        const receiptDate =
+          result.date && !Number.isNaN(new Date(result.date).getTime())
+            ? new Date(result.date)
+            : new Date();
+
         // Update order (do NOT persist lottery/qrData per legal requirement)
         await prisma.order.update({
           where: { id: order.id },
@@ -505,7 +512,7 @@ router.post(
             ebarimtId: result.id,
             ebarimtBillId: result.billId,
             ebarimtRegistered: true,
-            ebarimtDate: new Date(),
+            ebarimtDate: receiptDate,
           },
         });
 
@@ -519,9 +526,11 @@ router.post(
         res.json({
           status: "success",
           data: {
+            success: true,
             orderId: order.id,
             ebarimtId: result.id,
             billId: result.billId,
+            date: result.date,
             lottery: isB2B ? undefined : result.lottery,
             qrData: result.qrData,
             isB2B,

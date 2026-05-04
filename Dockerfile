@@ -45,12 +45,16 @@ COPY package.json pnpm-lock.yaml ./
 # Install production dependencies only
 RUN npm install -g pnpm && pnpm install --prod --frozen-lockfile
 
-# Copy Prisma schema and generate client
+# Copy Prisma schema and generated client from builder
 COPY --from=builder /app/prisma/schema.prisma ./prisma/schema.prisma
-RUN npx prisma generate
+COPY --from=builder /app/node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/@prisma/client ./node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/@prisma/client
+COPY --from=builder /app/node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/.prisma ./node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/.prisma
 
 # Copy built application
 COPY --from=builder /app/dist ./dist
+
+# Copy fonts
+COPY --from=builder /app/fonts ./fonts
 
 # Create logs directory
 RUN mkdir -p logs
