@@ -560,6 +560,10 @@ router.post(
           };
         }
 
+        const now = new Date();
+        const month = now.getMonth() + 1;
+        const year = now.getFullYear();
+
         for (const item of order.orderItems) {
           await tx.product.update({
             where: { id: item.productId },
@@ -569,6 +573,31 @@ router.post(
               },
             },
           });
+
+          const balance = await tx.inventoryBalance.findUnique({
+            where: {
+              productId_month_year: {
+                productId: item.productId,
+                month,
+                year,
+              },
+            },
+          });
+          if (balance) {
+            await tx.inventoryBalance.update({
+              where: {
+                productId_month_year: {
+                  productId: item.productId,
+                  month,
+                  year,
+                },
+              },
+              data: {
+                totalIn: { increment: item.quantity },
+                closingBalance: { increment: item.quantity },
+              },
+            });
+          }
         }
 
         const updatedOrder = await tx.order.update({

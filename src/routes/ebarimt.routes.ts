@@ -662,16 +662,74 @@ router.post(
       );
 
       if (result.success) {
-        // Update order with return information
-        await prisma.order.update({
-          where: { id: order.id },
-          data: {
-            ebarimtReturnId: result.id,
-          },
+        // Захиалгыг цуцалж, барааны үлдэгдлийг буцаан нэмнэ.
+        // Idempotent байх үүднээс ebarimtReturnId-г transaction дотор дахин шалгана.
+        const txResult = await prisma.$transaction(async (tx) => {
+          const fresh = await tx.order.findUnique({
+            where: { id: order.id },
+            include: { orderItems: true },
+          });
+          if (!fresh) {
+            throw new AppError("Order not found", 404);
+          }
+
+          // Хэрвээ өөр returnId-аар аль хэдийн буцсан бол алдаа
+          if (fresh.ebarimtReturnId && fresh.ebarimtReturnId !== result.id) {
+            throw new AppError("Order bill already returned", 400);
+          }
+
+          // Аль хэдийн ижил returnId-аар бүртгэгдсэн байвал давхар restock хийхгүй
+          const alreadyProcessed = fresh.ebarimtReturnId === result.id;
+
+          if (!alreadyProcessed) {
+            const now = new Date();
+            const month = now.getMonth() + 1;
+            const year = now.getFullYear();
+
+            for (const item of fresh.orderItems) {
+              await tx.product.update({
+                where: { id: item.productId },
+                data: { stockQuantity: { increment: item.quantity } },
+              });
+
+              const balance = await tx.inventoryBalance.findUnique({
+                where: {
+                  productId_month_year: {
+                    productId: item.productId,
+                    month,
+                    year,
+                  },
+                },
+              });
+              if (balance) {
+                await tx.inventoryBalance.update({
+                  where: {
+                    productId_month_year: {
+                      productId: item.productId,
+                      month,
+                      year,
+                    },
+                  },
+                  data: {
+                    totalIn: { increment: item.quantity },
+                    closingBalance: { increment: item.quantity },
+                  },
+                });
+              }
+            }
+          }
+
+          return tx.order.update({
+            where: { id: order.id },
+            data: {
+              ebarimtReturnId: result.id,
+              status: "Cancelled",
+            },
+          });
         });
 
         logger.info(
-          `E-Barimt bill returned for order ${orderId}: ${result.id}`
+          `E-Barimt bill returned for order ${orderId}: ${result.id} (status=Cancelled, restocked items)`
         );
 
         res.json({
@@ -679,6 +737,8 @@ router.post(
           data: {
             orderId: order.id,
             returnId: result.id,
+            status: txResult.status,
+            restocked: true,
             success: true,
             message: result.message,
           },
