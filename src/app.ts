@@ -32,6 +32,7 @@ import ebarimtRoutes from "./routes/ebarimt.routes";
 import bunaRoutes from "./routes/buna.routes";
 import agentKpiRoutes from "./routes/agent-kpi.routes";
 import salesKpiRoutes from "./routes/sales-kpi.routes";
+import promotionsRoutes from "./routes/promotions.routes";
 import ebarimtService from "./services/ebarimt.service";
 
 const app: Application = express();
@@ -183,6 +184,7 @@ app.use("/api/ebarimt", ebarimtRoutes);
 app.use("/api/buna", bunaRoutes);
 app.use("/api/agent-kpi", agentKpiRoutes);
 app.use("/api/sales-kpi", salesKpiRoutes);
+app.use("/api", promotionsRoutes);
 
 // 404 handler
 app.use(notFoundHandler);

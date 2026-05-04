@@ -2,6 +2,7 @@ import cron from "node-cron";
 import logger from "../utils/logger";
 import ebarimtService from "./ebarimt.service";
 import prisma from "../db/prisma";
+import { deactivateExpiredPromotions } from "../controllers/promotions.controller";
 
 /**
  * Scheduler Service
@@ -16,6 +17,7 @@ class SchedulerService {
   private dailySendJob: cron.ScheduledTask | null = null;
   private lotteryCheckJob: cron.ScheduledTask | null = null;
   private autoRegisterJob: cron.ScheduledTask | null = null;
+  private promotionExpiryJob: cron.ScheduledTask | null = null;
 
   /**
    * Initialize all scheduled jobs
@@ -26,12 +28,42 @@ class SchedulerService {
       return;
     }
 
+    logger.info("Initializing scheduler service...");
+
+    // Promotion expiry job — eBarimt-аас үл хамаарч ажиллана
+    // Хугацаа дууссан урамшууллыг 15 минут тутамд авто идэвхгүй болгоно
+    this.promotionExpiryJob = cron.schedule(
+      "*/15 * * * *",
+      async () => {
+        try {
+          await deactivateExpiredPromotions();
+        } catch (error) {
+          logger.error("Error deactivating expired promotions", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      },
+      {
+        scheduled: true,
+        timezone: "Asia/Ulaanbaatar",
+      }
+    );
+
+    // Серверийн эхлэлд нэг удаа гар triggerлэж дууссан урамшуулалуудыг цэвэрлэнэ
+    deactivateExpiredPromotions().catch((error) => {
+      logger.error("Initial promotion expiry sweep failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+
     if (!ebarimtService.isServiceEnabled()) {
-      logger.info("E-Barimt is disabled, skipping scheduler initialization");
+      logger.info(
+        "E-Barimt is disabled, skipping eBarimt-related scheduled jobs"
+      );
+      this.isInitialized = true;
+      logger.info("Scheduler service initialized (promotion expiry only)");
       return;
     }
-
-    logger.info("Initializing scheduler service...");
 
     // Schedule daily data send to central system
     // Runs at 23:00 (11 PM) every day
@@ -74,7 +106,12 @@ class SchedulerService {
 
     this.isInitialized = true;
     logger.info("Scheduler service initialized successfully", {
-      jobs: ["dailySend (23:00)", "lotteryCheck (every 4h)", "autoRegister (every 30m 8AM-10PM)"],
+      jobs: [
+        "dailySend (23:00)",
+        "lotteryCheck (every 4h)",
+        "autoRegister (every 30m 8AM-10PM)",
+        "promotionExpiry (every 15m)",
+      ],
     });
   }
 
@@ -93,6 +130,10 @@ class SchedulerService {
     if (this.autoRegisterJob) {
       this.autoRegisterJob.stop();
       this.autoRegisterJob = null;
+    }
+    if (this.promotionExpiryJob) {
+      this.promotionExpiryJob.stop();
+      this.promotionExpiryJob = null;
     }
     this.isInitialized = false;
     logger.info("Scheduler service stopped");
@@ -355,6 +396,7 @@ class SchedulerService {
       dailySend: boolean;
       lotteryCheck: boolean;
       autoRegister: boolean;
+      promotionExpiry: boolean;
     };
   } {
     return {
@@ -363,6 +405,7 @@ class SchedulerService {
         dailySend: this.dailySendJob !== null,
         lotteryCheck: this.lotteryCheckJob !== null,
         autoRegister: this.autoRegisterJob !== null,
+        promotionExpiry: this.promotionExpiryJob !== null,
       },
     };
   }

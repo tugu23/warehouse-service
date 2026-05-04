@@ -837,10 +837,11 @@ class EBarimtService {
       };
     }
 
+    const formattedDate = date
+      ? this.formatPosApiDate(date)
+      : undefined;
+
     try {
-      const formattedDate = date
-        ? this.formatPosApiDate(date)
-        : undefined;
       logger.info("Returning receipt in E-Barimt", {
         billId,
         date,
@@ -863,14 +864,21 @@ class EBarimtService {
       });
 
       const result = response.data;
+      const normalizedStatus = result.status?.toUpperCase();
+      const isPendingApproval = normalizedStatus === "UNCONFIRMED_RETURN";
+      const isSuccess =
+        result.success === true ||
+        (response.status >= 200 &&
+          response.status < 300 &&
+          result.success !== false);
 
-      if (result.success) {
-        // Check if it's direct deactivation or pending citizen approval
-        const isPendingApproval = result.status === "UNCONFIRMED_RETURN";
+      if (isSuccess) {
+        // PosAPI can return HTTP 200 without an explicit success flag.
+        // Treat any 2xx response that is not explicitly false as success.
 
         logger.info("Receipt return processed", {
           billId,
-          status: result.status,
+          status: normalizedStatus,
           isPendingApproval,
         });
 
@@ -878,11 +886,11 @@ class EBarimtService {
           success: true,
           message: isPendingApproval
             ? "Баримт буцаалт хүлээгдэж байна. Иргэн ИБАРИМТ аппликейшнээс зөвшөөрөх шаардлагатай."
-            : "Баримт амжилттай идэвхгүй болгогдлоо",
+            : result.message || "Баримт амжилттай идэвхгүй болгогдлоо",
           data: {
-            id: billId,
+            id: (result as { id?: string }).id || billId,
             billId: billId,
-            date: "",
+            date: formattedDate || "",
             lottery: "",
             qrData: ""
           },
@@ -919,6 +927,30 @@ class EBarimtService {
           (b.error as string);
       } else if (typeof posBody === "string") {
         posMessage = posBody;
+      }
+
+      const duplicateReceiptId =
+        typeof posMessage === "string" &&
+        /UNIQUE constraint failed:\s*receipt\.id/i.test(posMessage);
+
+      if (duplicateReceiptId) {
+        logger.warn("Receipt already returned in POS API", {
+          billId,
+          posStatus,
+          posMessage,
+        });
+
+        return {
+          success: true,
+          message: "Баримт өмнө нь буцаагдсан байна",
+          data: {
+            id: billId,
+            billId,
+            date: date ? this.formatPosApiDate(date) : "",
+            lottery: "",
+            qrData: "",
+          },
+        };
       }
 
       return {

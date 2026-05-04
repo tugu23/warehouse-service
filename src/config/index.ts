@@ -13,6 +13,7 @@ export const config = {
   cors: {
     allowedOrigins: process.env.ALLOWED_ORIGINS?.split(",") || [
       "http://localhost:3000",
+      "http://localhost:8081",
       "http://localhost:5173",
     ],
   },

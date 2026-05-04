@@ -113,6 +113,7 @@ export const getAllProducts = async (
       ];
     }
 
+    const now = new Date();
     const include: any = {
       category: true,
       prices: {
@@ -122,6 +123,14 @@ export const getAllProducts = async (
         orderBy: {
           customerTypeId: "asc" as const,
         },
+      },
+      promotions: {
+        where: {
+          isActive: true,
+          startDate: { lte: now },
+          endDate: { gte: now },
+        },
+        orderBy: { endDate: "asc" as const },
       },
     };
 
@@ -163,6 +172,7 @@ export const getProductById = async (
   try {
     const { id } = req.params;
 
+    const now = new Date();
     const product = await prisma.product.findUnique({
       where: { id: parseInt(id) },
       include: {
@@ -174,6 +184,14 @@ export const getProductById = async (
           orderBy: {
             customerTypeId: "asc",
           },
+        },
+        promotions: {
+          where: {
+            isActive: true,
+            startDate: { lte: now },
+            endDate: { gte: now },
+          },
+          orderBy: { endDate: "asc" },
         },
       },
     });
