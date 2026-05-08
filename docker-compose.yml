@@ -37,7 +37,7 @@ services:
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://oasiserp.mn,https://www.oasiserp.mn,http://localhost:8080,http://localhost}
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
-      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-100}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-1000}
       # E-Barimt Configuration
       EBARIMT_ENABLED: ${EBARIMT_ENABLED:-true}
       EBARIMT_API_URL: ${EBARIMT_API_URL:-http://43.231.115.209:7080}
