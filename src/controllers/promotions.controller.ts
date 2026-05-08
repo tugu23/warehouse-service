@@ -8,6 +8,7 @@ type PromotionInput = {
   name?: string;
   type?: string;
   discountPercent?: number | string | null;
+  minQuantity?: number | string | null;
   buyQty?: number | null;
   freeQty?: number | null;
   startDate?: string | Date;
@@ -58,6 +59,7 @@ function parsePromotionPayload(
   }
 
   let discountPercent: number | null | undefined;
+  let minQuantity: number | null | undefined;
   let buyQty: number | null | undefined;
   let freeQty: number | null | undefined;
 
@@ -70,6 +72,16 @@ function parsePromotionPayload(
       throw new AppError("Хөнгөлөлтийн хувь 0-100 хооронд байх ёстой", 400);
     }
     discountPercent = dp;
+    // minQuantity: if provided, must be >= 1; if not provided, null means no minimum
+    if (body.minQuantity !== undefined && body.minQuantity !== null && body.minQuantity !== "") {
+      const mq = Number(body.minQuantity);
+      if (!Number.isFinite(mq) || mq < 1) {
+        throw new AppError("Доод тоо ширхэг 1 буюу түүнээс их байх ёстой", 400);
+      }
+      minQuantity = Math.floor(mq);
+    } else {
+      minQuantity = null;
+    }
     buyQty = null;
     freeQty = null;
   } else if (type === "BUY_X_GET_Y") {
@@ -82,6 +94,7 @@ function parsePromotionPayload(
       throw new AppError("Урамшуулалт ширхэг (freeQty) 1 ба түүнээс их байна", 400);
     }
     discountPercent = null;
+    minQuantity = null;
     buyQty = Math.floor(bx);
     freeQty = Math.floor(fy);
   } else if (partial) {
@@ -91,6 +104,17 @@ function parsePromotionPayload(
         throw new AppError("Хөнгөлөлтийн хувь 0-100 хооронд байх ёстой", 400);
       }
       discountPercent = dp;
+    }
+    if (body.minQuantity !== undefined) {
+      if (body.minQuantity === null || body.minQuantity === "" || body.minQuantity === undefined) {
+        minQuantity = null;
+      } else {
+        const mq = Number(body.minQuantity);
+        if (!Number.isFinite(mq) || mq < 1) {
+          throw new AppError("Доод тоо ширхэг 1 буюу түүнээс их байх ёстой", 400);
+        }
+        minQuantity = Math.floor(mq);
+      }
     }
     if (body.buyQty !== undefined) {
       const bx = body.buyQty != null ? Number(body.buyQty) : NaN;
@@ -118,6 +142,7 @@ function parsePromotionPayload(
     name,
     type,
     discountPercent,
+    minQuantity,
     buyQty,
     freeQty,
     startDate,
@@ -126,11 +151,13 @@ function parsePromotionPayload(
   };
 }
 
-function serializePromotion<T extends { discountPercent: any }>(p: T) {
+function serializePromotion<T extends { discountPercent: any; minQuantity: any }>(p: T) {
   return {
     ...p,
     discountPercent:
       p.discountPercent != null ? Number(p.discountPercent) : null,
+    minQuantity:
+      p.minQuantity != null ? Number(p.minQuantity) : null,
   };
 }
 
@@ -195,6 +222,7 @@ export const createPromotion = async (
         name: data.name!,
         type: data.type!,
         discountPercent: data.discountPercent ?? null,
+        minQuantity: data.minQuantity ?? null,
         buyQty: data.buyQty ?? null,
         freeQty: data.freeQty ?? null,
         startDate: data.startDate!,
@@ -252,9 +280,8 @@ export const updatePromotion = async (
     if (partial.isActive !== undefined) data.isActive = partial.isActive;
 
     if (newType === "PERCENT_DISCOUNT") {
-      if (partial.discountPercent !== undefined) {
-        data.discountPercent = partial.discountPercent;
-      }
+      if (partial.discountPercent !== undefined) data.discountPercent = partial.discountPercent;
+      if (partial.minQuantity !== undefined) data.minQuantity = partial.minQuantity;
       if (existing.type !== newType) {
         data.buyQty = null;
         data.freeQty = null;
@@ -264,6 +291,7 @@ export const updatePromotion = async (
       if (partial.freeQty !== undefined) data.freeQty = partial.freeQty;
       if (existing.type !== newType) {
         data.discountPercent = null;
+        data.minQuantity = null;
       }
     }
 

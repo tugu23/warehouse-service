@@ -271,3 +271,154 @@ export const deleteEmployee = async (
     next(error);
   }
 };
+
+export const getMe = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const authReq = req as any;
+    const userId = authReq.user.userId;
+
+    const employee = await prisma.employee.findUnique({
+      where: { id: userId },
+      include: { role: true, store: true },
+    });
+
+    if (!employee) {
+      throw new AppError(req.t.employees.notFound, 404);
+    }
+
+    res.json({
+      status: "success",
+      data: {
+        employee: {
+          id: employee.id,
+          name: employee.name,
+          email: employee.email,
+          phoneNumber: employee.phoneNumber,
+          role: employee.role.name,
+          store: employee.store ? {
+            id: employee.store.id,
+            name: employee.store.name,
+            storeType: employee.store.storeType,
+          } : null,
+          isActive: employee.isActive,
+          createdAt: employee.createdAt,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const changePassword = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const authReq = req as any;
+    const userId = authReq.user.userId;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      throw new AppError("Одоогийн нууц үг болон шинэ нууц үгийг оруулна уу", 400);
+    }
+
+    if (newPassword.length < 6) {
+      throw new AppError("Шинэ нууц үг хамгийн багадаа 6 тэмдэгт байх ёстой", 400);
+    }
+
+    const employee = await prisma.employee.findUnique({
+      where: { id: userId },
+    });
+
+    if (!employee) {
+      throw new AppError(req.t.employees.notFound, 404);
+    }
+
+    // Verify current password
+    const isPasswordValid = await bcrypt.compare(currentPassword, employee.passwordHash);
+    if (!isPasswordValid) {
+      throw new AppError("Одоогийн нууц үг буруу байна", 400);
+    }
+
+    // Hash and update new password
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.employee.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+
+    logger.info(`Password changed for employee: ${employee.email}`);
+
+    res.json({
+      status: "success",
+      message: "Нууц үг амжилттай өөрчлөгдлөө",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const changeEmail = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const authReq = req as any;
+    const userId = authReq.user.userId;
+    const { newEmail, password } = req.body;
+
+    if (!newEmail || !password) {
+      throw new AppError("Шинэ имэйл болон нууц үгийг оруулна уу", 400);
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+      throw new AppError("Зөв имэйл хаяг оруулна уу", 400);
+    }
+
+    const employee = await prisma.employee.findUnique({
+      where: { id: userId },
+    });
+
+    if (!employee) {
+      throw new AppError(req.t.employees.notFound, 404);
+    }
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, employee.passwordHash);
+    if (!isPasswordValid) {
+      throw new AppError("Нууц үг буруу байна", 400);
+    }
+
+    // Check if new email is already taken by another user
+    if (newEmail !== employee.email) {
+      const existingEmail = await prisma.employee.findUnique({
+        where: { email: newEmail },
+      });
+
+      if (existingEmail) {
+        throw new AppError("Энэ имэйл хаяг аль хэдийн бүртгэлтэй байна", 400);
+      }
+    }
+
+    await prisma.employee.update({
+      where: { id: userId },
+      data: { email: newEmail },
+    });
+
+    logger.info(`Email changed for employee: ${employee.email} -> ${newEmail}`);
+
+    res.json({
+      status: "success",
+      message: "Имэйл хаяг амжилттай өөрчлөгдлөө",
+    });
+  } catch (error) {
+    next(error);
+  }
+};

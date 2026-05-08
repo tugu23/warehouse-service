@@ -6,6 +6,9 @@ import {
   getEmployeeById,
   updateEmployee,
   deleteEmployee,
+  getMe,
+  changePassword,
+  changeEmail,
 } from "../controllers/employees.controller";
 import { authMiddleware, checkRole } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validation.middleware";
@@ -159,6 +162,108 @@ router.post(
 router.get(
   "/",
   getAllEmployees
+);
+
+/**
+ * @swagger
+ * /api/employees/me:
+ *   get:
+ *     summary: Get current user profile
+ *     tags: [Employees]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Current user profile
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
+router.get("/me", getMe);
+
+/**
+ * @swagger
+ * /api/employees/me/password:
+ *   post:
+ *     summary: Change current user's password
+ *     tags: [Employees]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - currentPassword
+ *               - newPassword
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *                 description: Current password
+ *               newPassword:
+ *                 type: string
+ *                 minLength: 6
+ *                 description: New password (min 6 characters)
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
+router.post(
+  "/me/password",
+  validate([
+    body("currentPassword").notEmpty().withMessage("Current password is required"),
+    body("newPassword")
+      .isLength({ min: 6 })
+      .withMessage("New password must be at least 6 characters"),
+  ]),
+  changePassword
+);
+
+/**
+ * @swagger
+ * /api/employees/me/email:
+ *   put:
+ *     summary: Change current user's email
+ *     tags: [Employees]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - newEmail
+ *               - password
+ *             properties:
+ *               newEmail:
+ *                 type: string
+ *                 format: email
+ *                 description: New email address
+ *               password:
+ *                 type: string
+ *                 description: Current password (for verification)
+ *     responses:
+ *       200:
+ *         description: Email changed successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
+router.put(
+  "/me/email",
+  validate([
+    body("newEmail").isEmail().withMessage("Valid email is required"),
+    body("password").notEmpty().withMessage("Password is required"),
+  ]),
+  changeEmail
 );
 
 /**

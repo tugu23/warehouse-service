@@ -386,6 +386,7 @@ model Promotion {
   name            String        @db.VarChar(255)
   type            PromotionType
   discountPercent Decimal?      @map("discount_percent") @db.Decimal(5, 2)
+  minQuantity     Int?          @map("min_quantity")
   buyQty          Int?          @map("buy_qty")
   freeQty         Int?          @map("free_qty")
   startDate       DateTime      @map("start_date") @db.Timestamptz(3)
