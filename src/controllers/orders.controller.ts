@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+﻿import { Request, Response, NextFunction } from "express";
 import prisma from "../db/prisma";
 import { AppError } from "../middleware/error.middleware";
 import { AuthRequest } from "../middleware/auth.middleware";
@@ -10,6 +10,8 @@ import pdfService from "../services/pdf-pdfkit.service";
 import ebarimtService from "../services/ebarimt.service";
 import { resolveOrderItemUnitPrice } from "../utils/orderPricing";
 import { shouldForceInactiveProduct } from "../utils/productAvailability";
+import { serializeDecimal } from "../utils/serializer";
+import { getBuyXGetYBonusQty, isPromotionCurrentlyActive } from "../utils/promotion.utils";
 
 export const createOrder = async (
   req: Request,
@@ -24,7 +26,9 @@ export const createOrder = async (
       paymentMethod = "Cash",
       creditTermDays: creditTermDaysRaw,
       orderType = "Store", // Default to Store
+      orderDate, // Захиалгын огноо
       deliveryDate,
+      ebarimtReceiptType,
     } = req.body;
 
     const customerIdNum = Number(customerId);
@@ -48,13 +52,13 @@ export const createOrder = async (
       paymentMethod === "Credit" &&
       (!creditTermDays || !Number.isFinite(creditTermDays))
     ) {
-      throw new AppError("Зээлийн төлбөрт хугацаа заах шаардлагатай", 400);
+      throw new AppError("Ð—ÑÑÐ»Ð¸Ð¹Ð½ Ñ‚Ó©Ð»Ð±Ó©Ñ€Ñ‚ Ñ…ÑƒÐ³Ð°Ñ†Ð°Ð° Ð·Ð°Ð°Ñ… ÑˆÐ°Ð°Ñ€Ð´Ð»Ð°Ð³Ð°Ñ‚Ð°Ð¹", 400);
     }
 
     // Validate orderType
     if (!["Market", "Store"].includes(orderType)) {
       throw new AppError(
-        "Захиалгын төрөл зөвхөн Зах эсвэл Дэлгүүр байх ёстой",
+        "Ð—Ð°Ñ…Ð¸Ð°Ð»Ð³Ñ‹Ð½ Ñ‚Ó©Ñ€Ó©Ð» Ð·Ó©Ð²Ñ…Ó©Ð½ Ð—Ð°Ñ… ÑÑÐ²ÑÐ» Ð”ÑÐ»Ð³Ò¯Ò¯Ñ€ Ð±Ð°Ð¹Ñ… Ñ‘ÑÑ‚Ð¾Ð¹",
         400
       );
     }
@@ -93,26 +97,59 @@ export const createOrder = async (
                 price: true,
               },
             },
+            promotions: true,
           },
         });
 
         if (!product) {
           throw new AppError(
-            `ID ${item.productId} дугаартай бараа олдсонгүй`,
+            `ID ${item.productId} Ð´ÑƒÐ³Ð°Ð°Ñ€Ñ‚Ð°Ð¹ Ð±Ð°Ñ€Ð°Ð° Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹`,
             404
           );
         }
 
         if (product.isActive === false || shouldForceInactiveProduct(product)) {
           throw new AppError(
-            `${product.nameMongolian} бараа идэвхгүй тул захиалгад оруулах боломжгүй`,
+            `${product.nameMongolian} Ð±Ð°Ñ€Ð°Ð° Ð¸Ð´ÑÐ²Ñ…Ð³Ò¯Ð¹ Ñ‚ÑƒÐ» Ð·Ð°Ñ…Ð¸Ð°Ð»Ð³Ð°Ð´ Ð¾Ñ€ÑƒÑƒÐ»Ð°Ñ… Ð±Ð¾Ð»Ð¾Ð¼Ð¶Ð³Ò¯Ð¹`,
             400
           );
         }
 
-        if (product.stockQuantity < item.quantity) {
+        const selectedPromotion = item.promotionId == null
+          ? null
+          : product.promotions.find(
+              (p) => p.id === item.promotionId && isPromotionCurrentlyActive(p)
+            );
+        if (item.promotionId != null && !selectedPromotion) {
+          throw new AppError(`${product.nameMongolian}: сонгосон урамшуулал хүчингүй болсон`, 400);
+        }
+        if (
+          selectedPromotion?.type === "PERCENT_DISCOUNT" &&
+          selectedPromotion.minQuantity != null &&
+          item.quantity < selectedPromotion.minQuantity
+        ) {
           throw new AppError(
-            `${product.nameMongolian} барааны үлдэгдэл хүрэлцэхгүй байна. Үлдэгдэл: ${product.stockQuantity}, Захиалсан: ${item.quantity}`,
+            `${product.nameMongolian}: ${selectedPromotion.minQuantity} ширхэгээс хямдрал үйлчилнэ`,
+            400
+          );
+        }
+
+        // Calculate bonusFreeQty if promotion is selected
+        const bonusFreeQty = (() => {
+          if (!selectedPromotion || selectedPromotion.type !== "BUY_X_GET_Y") return 0;
+          return getBuyXGetYBonusQty(
+            item.quantity,
+            [selectedPromotion],
+            undefined,
+            { promotionId: item.promotionId }
+          );
+        })();
+
+        const totalQty = item.quantity + bonusFreeQty;
+
+        if (product.stockQuantity < totalQty) {
+          throw new AppError(
+            `${product.nameMongolian} Ð±Ð°Ñ€Ð°Ð°Ð½Ñ‹ Ò¯Ð»Ð´ÑÐ³Ð´ÑÐ» Ñ…Ò¯Ñ€ÑÐ»Ñ†ÑÑ…Ð³Ò¯Ð¹ Ð±Ð°Ð¹Ð½Ð°. Ò®Ð»Ð´ÑÐ³Ð´ÑÐ»: ${product.stockQuantity}, Ð—Ð°Ñ…Ð¸Ð°Ð»ÑÐ°Ð½: ${totalQty} (Ð¾Ñ€Ð»Ð¾Ð³Ð¾: ${item.quantity}, ÑƒÑ€Ð°Ð¼ÑˆÑƒÑƒÐ»Ð°Ð»: ${bonusFreeQty})`,
             400
           );
         }
@@ -142,14 +179,15 @@ export const createOrder = async (
           productId: item.productId,
           quantity: item.quantity,
           unitPrice,
+          promotionId: item.promotionId ?? null,
         });
 
-        // Decrement overall product stock
+        // Decrement product stock (including bonus items)
         await tx.product.update({
           where: { id: item.productId },
           data: {
             stockQuantity: {
-              decrement: item.quantity,
+              decrement: totalQty,
             },
           },
         });
@@ -180,10 +218,10 @@ export const createOrder = async (
             },
             data: {
               totalOut: {
-                increment: item.quantity,
+                increment: totalQty,
               },
               closingBalance: {
-                decrement: item.quantity,
+                decrement: totalQty,
               },
             },
           });
@@ -212,6 +250,7 @@ export const createOrder = async (
           customerId: customerIdNum,
           agentId: authReq.user!.userId,
           orderType,
+          orderDate: orderDate ? new Date(orderDate) : new Date(), // Захиалгын огноо (default: одоо)
           deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
           subtotalAmount,
           vatAmount,
@@ -223,6 +262,9 @@ export const createOrder = async (
           dueDate,
           paidAmount: paymentMethod === "Cash" ? totalAmount : 0,
           remainingAmount: paymentMethod === "Cash" ? 0 : totalAmount,
+          ...(ebarimtReceiptType === "B2B" || ebarimtReceiptType === "B2C"
+            ? { ebarimtReceiptType }
+            : {}),
           orderItems: {
             create: orderItemsData,
           },
@@ -233,7 +275,11 @@ export const createOrder = async (
             include: { role: true },
           },
           orderItems: {
-            include: { product: true },
+            include: {
+              product: {
+                include: { promotions: true },
+              },
+            },
           },
         },
       });
@@ -261,17 +307,27 @@ export const createOrder = async (
     // Frontend will call PUT /api/orders/:id/ebarimt to save the result
 
     // Add subtotal to orderItems for frontend
-    const orderWithSubtotals = {
+    const orderWithSubtotals = serializeDecimal({
       ...order,
       createdBy: order.agent, // Alias for frontend
       createdAt: order.orderDate, // Alias for frontend
-      orderItems: order.orderItems.map((item) => ({
-        ...item,
-        subtotal: new Prisma.Decimal(item.unitPrice.toString()).mul(
-          item.quantity
-        ),
-      })),
-    };
+      orderItems: order.orderItems.map((item) => {
+        const bonusFreeQty = (() => {
+          if (item.promotionId == null) return 0;
+          if (!item.product?.promotions?.length) return 0;
+          const activePromo = item.product.promotions.find(
+            (p) => p.id === item.promotionId && isPromotionCurrentlyActive(p)
+          );
+          if (!activePromo) return 0;
+          return getBuyXGetYBonusQty(item.quantity, [activePromo], undefined, { promotionId: item.promotionId });
+        })();
+        return {
+          ...item,
+          subtotal: new Prisma.Decimal(item.unitPrice.toString()).mul(item.quantity),
+          bonusFreeQty,
+        };
+      }),
+    });
 
     res.status(201).json({
       status: "success",
@@ -304,6 +360,12 @@ export const getAllOrders = async (
     const endDate = req.query.endDate as string;
 
     const where: any = {};
+
+    // Agents must never receive another employee's orders. Keep this on the
+    // server rather than relying on clients to pass an agentId filter.
+    if (authReq.user?.role === "SalesAgent") {
+      where.agentId = authReq.user.userId;
+    }
 
     if (status) {
       where.status = status;
@@ -346,9 +408,16 @@ export const getAllOrders = async (
             include: { role: true },
           },
           orderItems: {
-            include: { product: true },
+            include: {
+              product: {
+                include: { promotions: true },
+              },
+            },
           },
           payments: true,
+          returnedBy: {
+            include: { role: true },
+          },
         },
         orderBy: { orderDate: "desc" },
       }),
@@ -360,12 +429,23 @@ export const getAllOrders = async (
       ...order,
       createdBy: order.agent, // Alias for frontend
       createdAt: order.orderDate, // Alias for frontend (orderDate as createdAt)
-      orderItems: order.orderItems.map((item) => ({
-        ...item,
-        subtotal: new Prisma.Decimal(item.unitPrice.toString()).mul(
-          item.quantity
-        ), // Calculate subtotal
-      })),
+      orderItems: order.orderItems.map((item) => {
+        // Compute bonusFreeQty exactly like getOrderById does
+        const bonusFreeQty = (() => {
+          if (item.promotionId == null) return 0;
+          if (!item.product?.promotions?.length) return 0;
+          const activePromo = item.product.promotions.find(
+            (p) => p.id === item.promotionId && isPromotionCurrentlyActive(p)
+          );
+          if (!activePromo) return 0;
+          return getBuyXGetYBonusQty(item.quantity, [activePromo], undefined, { promotionId: item.promotionId });
+        })();
+        return {
+          ...item,
+          subtotal: new Prisma.Decimal(item.unitPrice.toString()).mul(item.quantity),
+          bonusFreeQty,
+        };
+      }),
     }));
 
     const actualLimit = limit || total;
@@ -403,7 +483,14 @@ export const getOrderById = async (
           include: { role: true },
         },
         orderItems: {
-          include: { product: true },
+          include: {
+            product: {
+              include: { promotions: true },
+            },
+          },
+        },
+        returnedBy: {
+          include: { role: true },
         },
       },
     });
@@ -413,17 +500,29 @@ export const getOrderById = async (
     }
 
     // Add aliases for frontend compatibility
-    const orderWithAliases = {
+    const orderWithAliases = serializeDecimal({
       ...order,
       createdBy: order.agent, // Alias for frontend
       createdAt: order.orderDate, // Alias for frontend (orderDate as createdAt)
-      orderItems: order.orderItems.map((item) => ({
-        ...item,
-        subtotal: new Prisma.Decimal(item.unitPrice.toString()).mul(
-          item.quantity
-        ), // Calculate subtotal
-      })),
-    };
+      orderItems: order.orderItems.map((item) => {
+        // Only show bonus if a promotion was explicitly selected and is still active
+        const bonusFreeQty = (() => {
+          if (item.promotionId == null) return 0;
+          if (!item.product?.promotions?.length) return 0;
+          const activePromo = item.product.promotions.find(
+            (p) => p.id === item.promotionId && isPromotionCurrentlyActive(p)
+          );
+          if (!activePromo) return 0;
+          return getBuyXGetYBonusQty(item.quantity, [activePromo], undefined, { promotionId: item.promotionId });
+        })();
+
+        return {
+          ...item,
+          subtotal: new Prisma.Decimal(item.unitPrice.toString()).mul(item.quantity),
+          bonusFreeQty,
+        };
+      }),
+    });
 
     res.json({
       status: "success",
@@ -450,15 +549,20 @@ export const updateOrder = async (
       creditTermDays: creditTermDaysRaw,
       orderType = "Store",
       deliveryDate,
+      ebarimtReceiptType,
     } = req.body;
 
     const existingOrder = await prisma.order.findUnique({
       where: { id: orderId },
-      include: { orderItems: true },
+      include: {
+        orderItems: {
+          include: { product: { include: { promotions: true } } },
+        },
+      },
     });
 
     if (!existingOrder) throw new AppError(req.t.orders.notFound, 404);
-    if (existingOrder.status !== "Pending") throw new AppError("Зөвхөн Pending захиалгыг засна", 400);
+    if (existingOrder.status === "Cancelled") throw new AppError("Цуцлагдсан захиалгыг засах боломжгүй", 400);
     if (existingOrder.ebarimtRegistered) throw new AppError("И-баримт бүртгэгдсэн захиалгыг засах боломжгүй", 400);
 
     if (authReq.user?.role === "SalesAgent" && existingOrder.agentId !== authReq.user.userId) {
@@ -475,7 +579,7 @@ export const updateOrder = async (
         : Number(creditTermDaysRaw);
 
     if (paymentMethod === "Credit" && (!creditTermDays || !Number.isFinite(creditTermDays))) {
-      throw new AppError("Зээлийн төлбөрт хугацаа заах шаардлагатай", 400);
+      throw new AppError("Ð—ÑÑÐ»Ð¸Ð¹Ð½ Ñ‚Ó©Ð»Ð±Ó©Ñ€Ñ‚ Ñ…ÑƒÐ³Ð°Ñ†Ð°Ð° Ð·Ð°Ð°Ñ… ÑˆÐ°Ð°Ñ€Ð´Ð»Ð°Ð³Ð°Ñ‚Ð°Ð¹", 400);
     }
 
     const updatedOrder = await prisma.$transaction(async (tx) => {
@@ -483,16 +587,30 @@ export const updateOrder = async (
       if (!customer) throw new AppError(req.t.customers.notFound, 404);
 
       for (const oldItem of existingOrder.orderItems) {
+        // Calculate bonusFreeQty for the old item to restore correct stock
+        const oldBonusFreeQty = (() => {
+          if (oldItem.promotionId == null) return 0;
+          const activePromo = oldItem.product?.promotions?.find(
+            (p) => p.id === oldItem.promotionId && isPromotionCurrentlyActive(p)
+          );
+          if (!activePromo) return 0;
+          return getBuyXGetYBonusQty(
+            oldItem.quantity,
+            (oldItem.product?.promotions || []).filter((p) => p.id === oldItem.promotionId),
+            undefined,
+            { promotionId: oldItem.promotionId }
+          );
+        })();
         await tx.product.update({
           where: { id: oldItem.productId },
-          data: { stockQuantity: { increment: oldItem.quantity } },
+          data: { stockQuantity: { increment: oldItem.quantity + oldBonusFreeQty } },
         });
       }
 
       await tx.orderItem.deleteMany({ where: { orderId } });
 
       let grossAmount = new Prisma.Decimal(0);
-      const orderItemsData: { productId: number; quantity: number; unitPrice: Prisma.Decimal }[] = [];
+      const orderItemsData: { productId: number; quantity: number; unitPrice: Prisma.Decimal; promotionId: number | null }[] = [];
 
       for (const item of items) {
         const product = await tx.product.findUnique({
@@ -503,17 +621,53 @@ export const updateOrder = async (
                 price: true,
               },
             },
+            promotions: true,
           },
         });
-        if (!product) throw new AppError(`ID ${item.productId} дугаартай бараа олдсонгүй`, 404);
+        if (!product) throw new AppError(`ID ${item.productId} Ð´ÑƒÐ³Ð°Ð°Ñ€Ñ‚Ð°Ð¹ Ð±Ð°Ñ€Ð°Ð° Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹`, 404);
         if (product.isActive === false || shouldForceInactiveProduct(product)) {
           throw new AppError(
-            `${product.nameMongolian} бараа идэвхгүй тул захиалгад оруулах боломжгүй`,
+            `${product.nameMongolian} Ð±Ð°Ñ€Ð°Ð° Ð¸Ð´ÑÐ²Ñ…Ð³Ò¯Ð¹ Ñ‚ÑƒÐ» Ð·Ð°Ñ…Ð¸Ð°Ð»Ð³Ð°Ð´ Ð¾Ñ€ÑƒÑƒÐ»Ð°Ñ… Ð±Ð¾Ð»Ð¾Ð¼Ð¶Ð³Ò¯Ð¹`,
             400
           );
         }
-        if (product.stockQuantity < item.quantity) {
-          throw new AppError(`${product.nameMongolian} барааны үлдэгдэл хүрэлцэхгүй байна`, 400);
+
+        const selectedPromotion = item.promotionId == null
+          ? null
+          : product.promotions.find(
+              (p) => p.id === item.promotionId && isPromotionCurrentlyActive(p)
+            );
+        if (item.promotionId != null && !selectedPromotion) {
+          throw new AppError(`${product.nameMongolian}: сонгосон урамшуулал хүчингүй болсон`, 400);
+        }
+        if (
+          selectedPromotion?.type === "PERCENT_DISCOUNT" &&
+          selectedPromotion.minQuantity != null &&
+          item.quantity < selectedPromotion.minQuantity
+        ) {
+          throw new AppError(
+            `${product.nameMongolian}: ${selectedPromotion.minQuantity} ширхэгээс хямдрал үйлчилнэ`,
+            400
+          );
+        }
+
+        // Calculate bonusFreeQty if promotion is selected
+        const bonusFreeQty = (() => {
+          if (!selectedPromotion || selectedPromotion.type !== "BUY_X_GET_Y") return 0;
+          return getBuyXGetYBonusQty(
+            item.quantity,
+            [selectedPromotion],
+            undefined,
+            { promotionId: item.promotionId }
+          );
+        })();
+
+        const totalQty = item.quantity + bonusFreeQty;
+        if (product.stockQuantity < totalQty) {
+          throw new AppError(
+            `${product.nameMongolian} Ð±Ð°Ñ€Ð°Ð°Ð½Ñ‹ Ò¯Ð»Ð´ÑÐ³Ð´ÑÐ» Ñ…Ò¯Ñ€ÑÐ»Ñ†ÑÑ…Ð³Ò¯Ð¹ Ð±Ð°Ð¹Ð½Ð°. Ò®Ð»Ð´ÑÐ³Ð´ÑÐ»: ${product.stockQuantity}, Ð—Ð°Ñ…Ð¸Ð°Ð»ÑÐ°Ð½: ${totalQty} (Ð¾Ñ€Ð»Ð¾Ð³Ð¾: ${item.quantity}, ÑƒÑ€Ð°Ð¼ÑˆÑƒÑƒÐ»Ð°Ð»: ${bonusFreeQty})`,
+            400
+          );
         }
 
         const mode = (item.priceMode || "auto") as
@@ -533,11 +687,11 @@ export const updateOrder = async (
         });
 
         grossAmount = grossAmount.add(new Prisma.Decimal(unitPrice.toString()).mul(item.quantity));
-        orderItemsData.push({ productId: item.productId, quantity: item.quantity, unitPrice });
+        orderItemsData.push({ productId: item.productId, quantity: item.quantity, unitPrice, promotionId: item.promotionId ?? null });
 
         await tx.product.update({
           where: { id: item.productId },
-          data: { stockQuantity: { decrement: item.quantity } },
+          data: { stockQuantity: { decrement: totalQty } },
         });
       }
 
@@ -569,7 +723,13 @@ export const updateOrder = async (
         include: {
           customer: true,
           agent: { include: { role: true } },
-          orderItems: { include: { product: true } },
+          orderItems: {
+            include: {
+              product: {
+                include: { promotions: true },
+              },
+            },
+          },
         },
       });
     });
@@ -577,15 +737,27 @@ export const updateOrder = async (
     res.json({
       status: "success",
       data: {
-        order: {
+        order: serializeDecimal({
           ...updatedOrder,
           createdBy: updatedOrder.agent,
           createdAt: updatedOrder.orderDate,
-          orderItems: updatedOrder.orderItems.map((item) => ({
-            ...item,
-            subtotal: new Prisma.Decimal(item.unitPrice.toString()).mul(item.quantity),
-          })),
-        },
+          orderItems: updatedOrder.orderItems.map((item) => {
+            const bonusFreeQty = (() => {
+              if (item.promotionId == null) return 0;
+              if (!item.product?.promotions?.length) return 0;
+              const activePromo = item.product.promotions.find(
+                (p) => p.id === item.promotionId && isPromotionCurrentlyActive(p)
+              );
+              if (!activePromo) return 0;
+              return getBuyXGetYBonusQty(item.quantity, [activePromo], undefined, { promotionId: item.promotionId });
+            })();
+            return {
+              ...item,
+              subtotal: new Prisma.Decimal(item.unitPrice.toString()).mul(item.quantity),
+              bonusFreeQty,
+            };
+          }),
+        }),
       },
     });
   } catch (error) {
@@ -619,7 +791,11 @@ export const updateOrderStatus = async (
           include: { role: true },
         },
         orderItems: {
-          include: { product: true },
+          include: {
+            product: {
+              include: { promotions: true },
+            },
+          },
         },
       },
     });
@@ -628,7 +804,7 @@ export const updateOrderStatus = async (
 
     res.json({
       status: "success",
-      data: { order: updatedOrder },
+      data: { order: serializeDecimal(updatedOrder) },
     });
   } catch (error) {
     next(error);
@@ -660,7 +836,7 @@ export const updateOrderEbarimt = async (
     });
 
     if (!order) {
-      throw new AppError("Захиалга олдсонгүй", 404);
+      throw new AppError("Ð—Ð°Ñ…Ð¸Ð°Ð»Ð³Ð° Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹", 404);
     }
 
     const updatedOrder = await prisma.order.update({
@@ -716,8 +892,10 @@ export const getOrderReceipt = async (
                 nameEnglish: true,
                 productCode: true,
                 barcode: true,
+                promotions: true,
               },
             },
+            promotion: true,
           },
         },
         payments: true,
@@ -751,15 +929,30 @@ export const getOrderReceipt = async (
         id: order.agent.id,
         name: order.agent.name,
       },
-      items: order.orderItems.map((item) => ({
-        productId: item.product.id,
-        productName: item.product.nameMongolian,
-        productCode: item.product.productCode,
-        barcode: item.product.barcode || undefined,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        total: parseFloat(item.unitPrice.toString()) * item.quantity,
-      })),
+      items: order.orderItems.map((item) => {
+        // Only show bonus if a promotion was explicitly selected and is still active
+        const bonusFreeQty = (() => {
+          if (item.promotionId == null) return 0;
+          if (!item.product?.promotions?.length) return 0;
+          const activePromo = item.product.promotions.find(
+            (p) => p.id === item.promotionId && isPromotionCurrentlyActive(p)
+          );
+          if (!activePromo) return 0;
+          return getBuyXGetYBonusQty(item.quantity, [activePromo], undefined, { promotionId: item.promotionId });
+        })();
+
+        return {
+          productId: item.product.id,
+          productName: item.product.nameMongolian,
+          productCode: item.product.productCode,
+          barcode: item.product.barcode || undefined,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          total: parseFloat(item.unitPrice.toString()) * item.quantity,
+          promotionId: item.promotionId ?? null,
+          bonusFreeQty,
+        };
+      }),
       payment: {
         method: order.paymentMethod,
         status: order.paymentStatus,
@@ -810,7 +1003,9 @@ export const prepareOrderDocument = async (
         },
         orderItems: {
           include: {
-            product: true,
+            product: {
+              include: { promotions: true },
+            },
           },
         },
         payments: true,
@@ -850,15 +1045,29 @@ export const prepareOrderDocument = async (
         email: order.agent.email,
         phone: order.agent.phoneNumber || "N/A",
       },
-      items: order.orderItems.map((item, index) => ({
-        no: index + 1,
-        productCode: item.product.productCode || "N/A",
-        productName: item.product.nameMongolian,
-        quantity: item.quantity,
-        unit: "ширхэг",
-        unitPrice: parseFloat(item.unitPrice.toString()),
-        total: parseFloat(item.unitPrice.toString()) * item.quantity,
-      })),
+      items: order.orderItems.map((item, index) => {
+        // Only show bonus if a promotion was explicitly selected and is still active
+        const bonusFreeQty = (() => {
+          if (item.promotionId == null) return 0;
+          if (!item.product?.promotions?.length) return 0;
+          const activePromo = item.product.promotions.find(
+            (p) => p.id === item.promotionId && isPromotionCurrentlyActive(p)
+          );
+          if (!activePromo) return 0;
+          return getBuyXGetYBonusQty(item.quantity, [activePromo], undefined, { promotionId: item.promotionId });
+        })();
+
+        return {
+          no: index + 1,
+          productCode: item.product.productCode || "N/A",
+          productName: item.product.nameMongolian,
+          quantity: item.quantity,
+          unit: "ÑˆÐ¸Ñ€Ñ…ÑÐ³",
+          unitPrice: parseFloat(item.unitPrice.toString()),
+          total: parseFloat(item.unitPrice.toString()) * item.quantity,
+          bonusFreeQty,
+        };
+      }),
       summary: {
         subtotal: parseFloat(
           order.subtotalAmount?.toString() ||
@@ -878,11 +1087,11 @@ export const prepareOrderDocument = async (
       },
       notes:
         order.paymentMethod === "Credit"
-          ? `Зээлийн нөхцөл: ${order.creditTermDays
-          } өдөр. Төлбөр төлөх өдөр: ${order.dueDate?.toLocaleDateString(
+          ? `Ð—ÑÑÐ»Ð¸Ð¹Ð½ Ð½Ó©Ñ…Ñ†Ó©Ð»: ${order.creditTermDays
+          } Ó©Ð´Ó©Ñ€. Ð¢Ó©Ð»Ð±Ó©Ñ€ Ñ‚Ó©Ð»Ó©Ñ… Ó©Ð´Ó©Ñ€: ${order.dueDate?.toLocaleDateString(
             "mn-MN"
           )}`
-          : "Бэлэн мөнгөөр төлсөн",
+          : "Ð‘ÑÐ»ÑÐ½ Ð¼Ó©Ð½Ð³Ó©Ó©Ñ€ Ñ‚Ó©Ð»ÑÓ©Ð½",
       printedAt: new Date(),
     };
 
@@ -930,7 +1139,7 @@ export const getOrderReceiptPDF = async (
     const authReq = req as AuthRequest;
     const { id } = req.params;
     const download = req.query.download === "true";
-    const showVat = req.query.showVat === "true"; // If true, show VAT; if false/undefined, show НӨАТ-гүй падаан
+    const showVat = req.query.showVat === "true"; // If true, show VAT; if false/undefined, show ÐÓ¨ÐÐ¢-Ð³Ò¯Ð¹ Ð¿Ð°Ð´Ð°Ð°Ð½
 
     const order = await prisma.order.findUnique({
       where: { id: parseInt(id) },
@@ -954,6 +1163,7 @@ export const getOrderReceiptPDF = async (
                 productCode: true,
                 barcode: true,
                 classificationCode: true,
+                promotions: true,
                 category: {
                   select: {
                     classificationCode: true,
@@ -973,11 +1183,11 @@ export const getOrderReceiptPDF = async (
 
     // Validate that order has required data for PDF generation
     if (!order.customer) {
-      throw new AppError("Захиалгын харилцагчийн мэдээлэл дутуу байна", 500);
+      throw new AppError("Ð—Ð°Ñ…Ð¸Ð°Ð»Ð³Ñ‹Ð½ Ñ…Ð°Ñ€Ð¸Ð»Ñ†Ð°Ð³Ñ‡Ð¸Ð¹Ð½ Ð¼ÑÐ´ÑÑÐ»ÑÐ» Ð´ÑƒÑ‚ÑƒÑƒ Ð±Ð°Ð¹Ð½Ð°", 500);
     }
 
     if (!order.agent) {
-      throw new AppError("Захиалгын борлуулагчийн мэдээлэл дутуу байна", 500);
+      throw new AppError("Ð—Ð°Ñ…Ð¸Ð°Ð»Ð³Ñ‹Ð½ Ð±Ð¾Ñ€Ð»ÑƒÑƒÐ»Ð°Ð³Ñ‡Ð¸Ð¹Ð½ Ð¼ÑÐ´ÑÑÐ»ÑÐ» Ð´ÑƒÑ‚ÑƒÑƒ Ð±Ð°Ð¹Ð½Ð°", 500);
     }
 
     if (!order.orderItems || order.orderItems.length === 0) {
@@ -1008,8 +1218,8 @@ export const getOrderReceiptPDF = async (
       cityTax = Math.round(subtotal * 0.02 * 100) / 100;
     }
 
-    // Detect B2B (organization with TIN)
-    const isB2B = !!order.customer.registrationNumber;
+    // Detect B2B: use stored type for already-registered orders; for new registrations it gets set below
+    const isB2B = order.ebarimtReceiptType === "B2B" || (order.ebarimtReceiptType == null && !!order.customer.registrationNumber);
 
     let ebarimtLotteryForPrint: string | undefined;
     let ebarimtQrDataForPrint: string | undefined;
@@ -1056,8 +1266,8 @@ export const getOrderReceiptPDF = async (
           errorMsg.includes("ENOTFOUND");
 
         const userMessage = isConnectionError
-          ? "E-Barimt системд холбогдох боломжгүй байна. API серверийг шалгана уу."
-          : `E-Bариmt баримт бүртгэл амжилтгүй [${errorCode}]: ${errorMsg}`;
+          ? "E-Barimt ÑÐ¸ÑÑ‚ÐµÐ¼Ð´ Ñ…Ð¾Ð»Ð±Ð¾Ð³Ð´Ð¾Ñ… Ð±Ð¾Ð»Ð¾Ð¼Ð¶Ð³Ò¯Ð¹ Ð±Ð°Ð¹Ð½Ð°. API ÑÐµÑ€Ð²ÐµÑ€Ð¸Ð¹Ð³ ÑˆÐ°Ð»Ð³Ð°Ð½Ð° ÑƒÑƒ."
+          : `E-BÐ°Ñ€Ð¸mt Ð±Ð°Ñ€Ð¸Ð¼Ñ‚ Ð±Ò¯Ñ€Ñ‚Ð³ÑÐ» Ð°Ð¼Ð¶Ð¸Ð»Ñ‚Ð³Ò¯Ð¹ [${errorCode}]: ${errorMsg}`;
 
         throw new AppError(userMessage, 500);
       }
@@ -1067,7 +1277,8 @@ export const getOrderReceiptPDF = async (
         lottery: ebarimtResult.data.lottery,
       });
 
-      // Persist only ДДТД and registration status (NOT lottery/qrData per legal requirement)
+      // Persist only Ð”Ð”Ð¢Ð” and registration status (NOT lottery/qrData per legal requirement)
+      // receiptType comes directly from the API response â€” no recalculation needed
       await prisma.order.update({
         where: { id: order.id },
         data: {
@@ -1075,6 +1286,7 @@ export const getOrderReceiptPDF = async (
           ebarimtBillId: ebarimtResult.data.billId,
           ebarimtRegistered: true,
           ebarimtDate: new Date(ebarimtResult.data.date),
+          ebarimtReceiptType: ebarimtResult.data.receiptType === "B2B_RECEIPT" ? "B2B" : "B2C",
         },
       });
 
@@ -1086,6 +1298,7 @@ export const getOrderReceiptPDF = async (
       order.ebarimtBillId = ebarimtResult.data.billId;
       order.ebarimtRegistered = true;
       order.ebarimtDate = new Date(ebarimtResult.data.date);
+      order.ebarimtReceiptType = ebarimtResult.data.receiptType === "B2B_RECEIPT" ? "B2B" : "B2C";
     }
 
     const receiptData = {
@@ -1097,26 +1310,48 @@ export const getOrderReceiptPDF = async (
       status: order.status,
       customer: {
         name: order.customer.name,
+        systemName: order.customer.name,
         address: order.customer.address,
         phoneNumber: order.customer.phoneNumber,
-        registrationNumber: order.customer.registrationNumber, // ТТД for B2B
+        registrationNumber: order.customer.registrationNumber, // Ð¢Ð¢Ð” for B2B
       },
       agent: {
         name: order.agent.name,
         phoneNumber: order.agent.phoneNumber,
       },
-      items: order.orderItems.map((item) => ({
-        productName: item.product.nameMongolian,
-        productCode: item.product.productCode || "N/A",
-        barcode: item.product.barcode || undefined,
-        quantity: item.quantity,
-        unitPrice: parseFloat(item.unitPrice.toString()),
-        total: parseFloat(item.unitPrice.toString()) * item.quantity,
-      })),
+      items: order.orderItems.map((item) => {
+        // Only show bonus rows if a promotion was explicitly selected for this item
+        const bonusFreeQty = (() => {
+          // If no promotion was explicitly selected, don't show bonus
+          if (item.promotionId == null) return 0;
+
+          // Must have promotions loaded to validate the promotion still exists
+          if (!item.product?.promotions?.length) return 0;
+
+          // Find the selected promotion and verify it's still active
+          const activePromo = item.product.promotions.find(
+            (p) => p.id === item.promotionId && isPromotionCurrentlyActive(p)
+          );
+          if (!activePromo) return 0;
+
+          // Use explicit promotionId so we ONLY use the selected promotion
+          return getBuyXGetYBonusQty(item.quantity, [activePromo], undefined, { promotionId: item.promotionId });
+        })();
+
+        return {
+          productName: item.product.nameMongolian,
+          productCode: item.product.productCode || "N/A",
+          barcode: item.product.barcode || undefined,
+          quantity: item.quantity,
+          unitPrice: parseFloat(item.unitPrice.toString()),
+          total: parseFloat(item.unitPrice.toString()) * item.quantity,
+          bonusFreeQty,
+        };
+      }),
       subtotal: Math.round(subtotal * 100) / 100,
       vat: Math.round(vat * 100) / 100,
       total,
-      cityTax: Math.round(cityTax * 100) / 100, // НХАТ
+      cityTax: Math.round(cityTax * 100) / 100, // ÐÐ¥ÐÐ¢
       paymentMethod: order.paymentMethod,
       paymentStatus: order.paymentStatus,
       paidAmount: parseFloat(order.paidAmount?.toString() || "0"),
@@ -1126,12 +1361,12 @@ export const getOrderReceiptPDF = async (
       // E-Barimt fields (lottery/qrData from memory only, not persisted)
       ebarimtId: order.ebarimtId,
       ebarimtBillId: order.ebarimtBillId,
-      ebarimtLottery: isB2B ? undefined : ebarimtLotteryForPrint,
+      ebarimtLottery: order.ebarimtReceiptType === "B2B" ? undefined : ebarimtLotteryForPrint,
       ebarimtQrData: ebarimtQrDataForPrint,
       ebarimtRegistered: order.ebarimtRegistered,
       ebarimtDate: order.ebarimtDate,
-      isB2B, // Flag for PDF service
-      showVat: showVat, // true = НӨАТ-тай, false = НӨАТ-гүй падаан
+      isB2B: order.ebarimtReceiptType === "B2B", // Use actual DB/API value
+      showVat: showVat, // true = ÐÓ¨ÐÐ¢-Ñ‚Ð°Ð¹, false = ÐÓ¨ÐÐ¢-Ð³Ò¯Ð¹ Ð¿Ð°Ð´Ð°Ð°Ð½
     };
 
     // Generate PDF
@@ -1161,6 +1396,64 @@ export const getOrderReceiptPDF = async (
       stack: error instanceof Error ? error.stack : undefined,
       orderId: req.params.id,
     });
+    next(error);
+  }
+};
+
+export const deleteOrder = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const orderId = parseInt(req.params.id);
+
+    await prisma.$transaction(async (tx) => {
+      // Find order with items
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: { orderItems: true },
+      });
+
+      if (!order) {
+        throw new AppError("Захиалга олдсонгүй", 404);
+      }
+
+      // Restore stock for each item
+      for (const item of order.orderItems) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: {
+            stockQuantity: {
+              increment: item.quantity,
+            },
+          },
+        });
+      }
+
+      // Delete order items first (foreign key constraint)
+      await tx.orderItem.deleteMany({
+        where: { orderId },
+      });
+
+      // Delete payments
+      await tx.payment.deleteMany({
+        where: { orderId },
+      });
+
+      // Delete order
+      await tx.order.delete({
+        where: { id: orderId },
+      });
+    });
+
+    logger.info(`Order ${orderId} deleted successfully`);
+
+    res.json({
+      status: "success",
+      message: "Захиалга амжилттай устгагдлаа",
+    });
+  } catch (error) {
     next(error);
   }
 };

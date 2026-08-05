@@ -4,7 +4,7 @@ import logger from "./utils/logger";
 import prisma from "./db/prisma";
 import schedulerService from "./services/scheduler.service";
 
-const PORT = config.port;
+const PORT = Number(config.port);
 
 // Graceful shutdown handler
 const gracefulShutdown = async (signal: string) => {
@@ -42,7 +42,7 @@ const startServer = async () => {
     schedulerService.initialize();
     logger.info("Scheduler service initialized");
 
-    app.listen(PORT, () => {
+    app.listen(PORT, "0.0.0.0", () => {
       logger.info(
         `Server is running on port ${PORT} in ${config.nodeEnv} mode`
       );

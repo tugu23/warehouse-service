@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { param, body, query } from "express-validator";
 import { Request, Response, NextFunction } from "express";
+import { Prisma } from "@prisma/client";
 import prisma from "../db/prisma";
 import { AppError } from "../middleware/error.middleware";
-import { authMiddleware, checkRole } from "../middleware/auth.middleware";
+import { AuthRequest, authMiddleware, checkRole } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validation.middleware";
 import ebarimtService from "../services/ebarimt.service";
 import logger from "../utils/logger";
@@ -394,6 +395,7 @@ router.post(
   ]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const authReq = req as AuthRequest;
       const { orderId } = req.params;
 
       // Get order with customer and items
@@ -411,6 +413,13 @@ router.post(
 
       if (!order) {
         throw new AppError("Order not found", 404);
+      }
+
+      if (
+        authReq.user?.role === "SalesAgent" &&
+        order.agentId !== authReq.user.userId
+      ) {
+        throw new AppError("Өөр ажилтны захиалгад E-Barimt бүртгэх эрхгүй", 403);
       }
 
       // Check if already registered
@@ -433,13 +442,18 @@ router.post(
       const { customerTin } = req.body || {};
       const rawRegistrationNumber = order.customer?.registrationNumber?.trim() || "";
       const rawRegistrationDigits = rawRegistrationNumber.replace(/\D/g, "");
+      const requestedReceiptType = order.ebarimtReceiptType;
       let resolvedCustomerTin =
-        typeof customerTin === "string" && customerTin.trim()
+        requestedReceiptType !== "B2C" && typeof customerTin === "string" && customerTin.trim()
           ? customerTin.trim()
           : null;
 
       // If only 7-digit organization regNo is available, resolve TIN automatically.
-      if (!resolvedCustomerTin && /^\d{7}$/.test(rawRegistrationDigits)) {
+      if (
+        requestedReceiptType !== "B2C" &&
+        !resolvedCustomerTin &&
+        /^\d{7}$/.test(rawRegistrationDigits)
+      ) {
         try {
           const tinResponse = await fetch(
             `https://api.ebarimt.mn/api/info/check/getTinInfo?regNo=${rawRegistrationDigits}`
@@ -483,7 +497,9 @@ router.post(
 
       // Use a valid TIN for B2B; otherwise downgrade to B2C to avoid invalid B2B requests.
       if (order.customer) {
-        if (resolvedCustomerTin) {
+        if (requestedReceiptType === "B2C") {
+          order.customer.registrationNumber = null;
+        } else if (resolvedCustomerTin) {
           order.customer.registrationNumber = resolvedCustomerTin;
         } else if (!/^\d{11,14}$/.test(rawRegistrationDigits)) {
           order.customer.registrationNumber = null;
@@ -506,6 +522,7 @@ router.post(
             : new Date();
 
         // Update order (do NOT persist lottery/qrData per legal requirement)
+        const isB2B = !!order.customer.registrationNumber;
         await prisma.order.update({
           where: { id: order.id },
           data: {
@@ -513,14 +530,13 @@ router.post(
             ebarimtBillId: result.billId,
             ebarimtRegistered: true,
             ebarimtDate: receiptDate,
+            ebarimtReceiptType: isB2B ? "B2B" : "B2C",
           },
         });
 
         logger.info(
           `E-Barimt registration for order ${orderId}: ДДТД ${result.billId}`
         );
-
-        const isB2B = !!order.customer.registrationNumber;
 
         // Return lottery/qrData for immediate printing only (not persisted)
         res.json({
@@ -604,7 +620,13 @@ router.get(
  *     tags: [E-Barimt]
  *     security:
  *       - bearerAuth: []
- *     description: Cancel an e-Barimt bill for returns
+ *     description: |
+ *       Нэгдсэн буцаалтын endpoint. Дараах үйлдлүүдийг атомын горимд хийнэ:
+ *       1. E-Barimt системд баримтыг идэвхгүй болгох
+ *       2. Захиалгын статус 'Cancelled' болгон шинэчлэх
+ *       3. Төлбөрийн статус шинэчлэх (Paid → Refunded, Pending → Cancelled)
+ *       4. Барааны үлдэгдлийг буцаан нэмэх
+ *       5. Буцаалтын түүх (audit trail) үүсгэх
  *     parameters:
  *       - in: path
  *         name: orderId
@@ -620,139 +642,268 @@ router.get(
  *             properties:
  *               reason:
  *                 type: string
- *                 description: Reason for return
+ *                 description: Буцаалтын шалтгаан
+ *               note:
+ *                 type: string
+ *                 description: Нэмэлт тэмдэглэл
  *     responses:
  *       200:
- *         description: Bill returned successfully
+ *         description: Баримт амжилттай буцаагдлаа
+ *       400:
+ *         description: Буцаалт хийх боломжгүй
+ *       422:
+ *         description: E-Barimt системд алдаа гарлаа
  */
 router.post(
   "/return/:orderId",
   checkRole(["Admin", "Manager"]),
   validate([
     param("orderId").isInt().withMessage("Valid order ID is required"),
-    body("reason").optional().isString(),
+    body("reason").optional().isString().isLength({ max: 500 }),
+    body("note").optional().isString().isLength({ max: 1000 }),
   ]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const authReq = req as AuthRequest;
       const { orderId } = req.params;
-      const { reason } = req.body;
+      const { reason, note } = req.body as { reason?: string; note?: string };
+      const returningAgentId = authReq.user?.userId;
 
-      // Get order
+      // 1. Get order with all related data
       const order = await prisma.order.findUnique({
         where: { id: parseInt(orderId) },
+        include: {
+          customer: true,
+          orderItems: { include: { product: true } },
+          payments: true,
+          agent: { include: { role: true } },
+        },
       });
 
       if (!order) {
-        throw new AppError("Order not found", 404);
+        throw new AppError("Захиалга олдсонгүй", 404);
       }
 
       if (!order.ebarimtRegistered || !order.ebarimtBillId) {
-        throw new AppError("Order not registered with e-Barimt", 400);
+        throw new AppError("E-Barimt бүртгэлгүй захиалга", 400);
       }
 
+      // 2. Detect B2B vs B2C for proper return handling
+      const isB2B = order.ebarimtReceiptType === "B2B" ||
+        (!order.ebarimtReceiptType && !!order.customer.registrationNumber);
+
+      // 3. Idempotency check — already returned
       if (order.ebarimtReturnId) {
-        throw new AppError("Order bill already returned", 400);
+        logger.info(`Order ${orderId} already returned with ID: ${order.ebarimtReturnId}`);
+        res.json({
+          status: "success",
+          data: {
+            orderId: order.id,
+            returnId: order.ebarimtReturnId,
+            status: order.status,
+            paymentStatus: order.paymentStatus,
+            alreadyReturned: true,
+            message: "Захиалга өмнө нь буцаагдсан байна",
+          },
+        });
+        return;
       }
 
-      // Return bill in e-Barimt — pass date so POS API receives { id, date }
-      const result = await ebarimtService.returnBill(
+      // 4. Call E-Barimt API to deactivate the bill
+      const ebarimtResult = await ebarimtService.returnReceipt(
         order.ebarimtBillId,
         order.ebarimtDate ? order.ebarimtDate.toISOString() : undefined,
         reason
       );
 
-      if (result.success) {
-        // Захиалгыг цуцалж, барааны үлдэгдлийг буцаан нэмнэ.
-        // Idempotent байх үүднээс ebarimtReturnId-г transaction дотор дахин шалгана.
-        const txResult = await prisma.$transaction(async (tx) => {
-          const fresh = await tx.order.findUnique({
-            where: { id: order.id },
-            include: { orderItems: true },
-          });
-          if (!fresh) {
-            throw new AppError("Order not found", 404);
-          }
-
-          // Хэрвээ өөр returnId-аар аль хэдийн буцсан бол алдаа
-          if (fresh.ebarimtReturnId && fresh.ebarimtReturnId !== result.id) {
-            throw new AppError("Order bill already returned", 400);
-          }
-
-          // Аль хэдийн ижил returnId-аар бүртгэгдсэн байвал давхар restock хийхгүй
-          const alreadyProcessed = fresh.ebarimtReturnId === result.id;
-
-          if (!alreadyProcessed) {
-            const now = new Date();
-            const month = now.getMonth() + 1;
-            const year = now.getFullYear();
-
-            for (const item of fresh.orderItems) {
-              await tx.product.update({
-                where: { id: item.productId },
-                data: { stockQuantity: { increment: item.quantity } },
-              });
-
-              const balance = await tx.inventoryBalance.findUnique({
-                where: {
-                  productId_month_year: {
-                    productId: item.productId,
-                    month,
-                    year,
-                  },
-                },
-              });
-              if (balance) {
-                await tx.inventoryBalance.update({
-                  where: {
-                    productId_month_year: {
-                      productId: item.productId,
-                      month,
-                      year,
-                    },
-                  },
-                  data: {
-                    totalIn: { increment: item.quantity },
-                    closingBalance: { increment: item.quantity },
-                  },
-                });
-              }
-            }
-          }
-
-          return tx.order.update({
-            where: { id: order.id },
-            data: {
-              ebarimtReturnId: result.id,
-              status: "Cancelled",
-            },
-          });
+      if (!ebarimtResult.success) {
+        logger.error(`E-Barimt return failed for order ${orderId}`, {
+          error: ebarimtResult.message,
+          errorCode: ebarimtResult.errorCode,
         });
+        res.status(422).json({
+          status: "error",
+          message: ebarimtResult.message || "E-Barimt буцаалт амжилтгүй",
+          data: { success: false, errorCode: ebarimtResult.errorCode },
+        });
+        return;
+      }
 
-        logger.info(
-          `E-Barimt bill returned for order ${orderId}: ${result.id} (status=Cancelled, restocked items)`
-        );
-
+      // 5. Idempotent E-Barimt check — duplicate from POS API
+      if (order.ebarimtReturnId === ebarimtResult.data?.id) {
         res.json({
           status: "success",
           data: {
             orderId: order.id,
-            returnId: result.id,
-            status: txResult.status,
-            restocked: true,
-            success: true,
-            message: result.message,
+            returnId: ebarimtResult.data?.id,
+            status: order.status,
+            alreadyReturned: true,
+            message: "E-Barimt өмнө нь буцаагдсан байна",
           },
         });
-      } else {
-        // Return POS error message directly to client so UI can show it
-        res.status(422).json({
-          status: "error",
-          message: result.message || "eBarimt буцаалт амжилтгүй",
-          data: {
-            success: false,
-          },
-        });
+        return;
       }
+
+      // 6. Comprehensive update within a transaction
+      const now = new Date();
+      const month = now.getMonth() + 1;
+      const year = now.getFullYear();
+
+      const txResult = await prisma.$transaction(async (tx) => {
+        const fresh = await tx.order.findUnique({
+          where: { id: order.id },
+          include: { orderItems: true },
+        });
+        if (!fresh) throw new AppError("Захиалга олдсонгүй", 404);
+
+        // Double idempotency check
+        if (fresh.ebarimtReturnId) {
+          return { alreadyProcessed: true, order: fresh };
+        }
+
+        // Update payment status based on original payment
+        let newPaymentStatus: "Refunded" | "Pending" = "Pending";
+        let refundAmount = 0;
+
+        if (order.paymentStatus === "Paid" || order.paymentMethod === "Cash") {
+          newPaymentStatus = "Refunded";
+          refundAmount = parseFloat(order.totalAmount?.toString() || "0");
+        }
+
+        // Restock inventory (for both B2B and B2C)
+        for (const item of fresh.orderItems) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: { stockQuantity: { increment: item.quantity } },
+          });
+
+          const balance = await tx.inventoryBalance.findUnique({
+            where: {
+              productId_month_year: {
+                productId: item.productId,
+                month,
+                year,
+              },
+            },
+          });
+          if (balance) {
+            await tx.inventoryBalance.update({
+              where: {
+                productId_month_year: {
+                  productId: item.productId,
+                  month,
+                  year,
+                },
+              },
+              data: {
+                totalIn: { increment: item.quantity },
+                closingBalance: { increment: item.quantity },
+              },
+            });
+          }
+        }
+
+        // Create refund payment record if originally paid
+        if (refundAmount > 0) {
+          await tx.payment.create({
+            data: {
+              orderId: order.id,
+              amount: new Prisma.Decimal(refundAmount),
+              paymentMethod: order.paymentMethod,
+              notes: `Буцаалт: ${reason || "Ерөнхий буцаалт"}`,
+            },
+          });
+        }
+
+        // Keep track of item count before update
+        const itemCount = fresh.orderItems.length;
+
+        const updateInclude = {
+          customer: true,
+          orderItems: { include: { product: true } },
+          agent: { include: { role: true } },
+          payments: true,
+        };
+
+        const baseOrderUpdateData = {
+          status: "Cancelled",
+          paymentStatus: newPaymentStatus,
+          remainingAmount: new Prisma.Decimal(0),
+          paidAmount: newPaymentStatus === "Refunded" ? new Prisma.Decimal(0) : order.paidAmount,
+          ebarimtReturnId: ebarimtResult.data?.id || "",
+        };
+
+        let updatedOrder;
+        try {
+          updatedOrder = await tx.order.update({
+            where: { id: order.id },
+            data: {
+              ...baseOrderUpdateData,
+              returnedAt: now,
+              returnReason: reason || null,
+              returnNote: note || null,
+              returnedById: returningAgentId || null,
+            },
+            include: updateInclude,
+          });
+        } catch (updateError) {
+          logger.warn("Order return audit fields could not be saved; retrying with minimal update", {
+            orderId: order.id,
+            error: updateError instanceof Error ? updateError.message : String(updateError),
+          });
+
+          updatedOrder = await tx.order.update({
+            where: { id: order.id },
+            data: baseOrderUpdateData,
+            include: updateInclude,
+          });
+        }
+
+        return { alreadyProcessed: false, order: updatedOrder, itemCount };
+      });
+
+      const returnData = txResult;
+
+      // 7. Log audit info
+      logger.info(`E-Barimt return completed for order ${orderId}`, {
+        orderId: order.id,
+        returnId: ebarimtResult.data?.id,
+        receiptType: order.ebarimtReceiptType || (isB2B ? "B2B" : "B2C"),
+        isB2B,
+        newStatus: returnData.order.status,
+        newPaymentStatus: returnData.order.paymentStatus,
+        refundedItems: returnData.itemCount,
+        returnedBy: returningAgentId,
+        reason,
+      });
+
+      // 8. Return comprehensive response
+      res.json({
+        status: "success",
+        data: {
+          orderId: order.id,
+          returnId: ebarimtResult.data?.id,
+          ebarimtBillId: order.ebarimtBillId,
+          receiptType: order.ebarimtReceiptType || (isB2B ? "B2B" : "B2C"),
+          isB2B,
+          status: returnData.order.status,
+          paymentStatus: returnData.order.paymentStatus,
+          remainingAmount: returnData.order.remainingAmount,
+          refundedAmount: returnData.order.paymentStatus === "Refunded"
+            ? parseFloat(order.totalAmount?.toString() || "0")
+            : 0,
+          refundedItems: returnData.itemCount,
+          returnedAt: now,
+          returnedBy: returningAgentId,
+          reason: reason || null,
+          note: note || null,
+          restocked: true,
+          success: true,
+          message: isB2B
+            ? "Байгууллагын баримт амжилттай буцаагдлаа"
+            : "Баримт амжилттай буцаагдлаа",
+        },
+      });
     } catch (error) {
       next(error);
     }
@@ -840,13 +991,12 @@ router.post(
         );
       }
 
-      // Prepare corrected bill data
+      // Prepare bill data
       const ebarimtData = ebarimtService.prepareOrderData({
         ...order,
         orderNumber: order.orderNumber || `ORD${order.id}`,
       });
 
-      // Edit the receipt
       const result = await ebarimtService.editReceipt({
         originalBillId: order.ebarimtBillId,
         editType: "EDIT",
@@ -855,7 +1005,6 @@ router.post(
       });
 
       if (result.success) {
-        // Update order (do NOT persist lottery/qrData per legal requirement)
         await prisma.order.update({
           where: { id: order.id },
           data: {

@@ -33,6 +33,7 @@ model Employee {
   store         Store?          @relation(fields: [storeId], references: [id])
   orders            Order[]             @relation("AgentOrders")
   agentSalesTargets AgentSalesTarget[]
+  returnedOrders    Order[]            @relation("OrderReturns")
 
   @@map("employees")
 }
@@ -154,27 +155,36 @@ model Order {
   ebarimtBillId     String?       @map("ebarimt_bill_id") @db.VarChar(100)
   ebarimtRegistered Boolean       @default(false) @map("ebarimt_registered")
   ebarimtDate       DateTime?     @map("ebarimt_date") @db.Timestamptz(3)
-  ebarimtReturnId   String?       @map("ebarimt_return_id") @db.VarChar(100)
+  ebarimtReturnId     String?       @map("ebarimt_return_id") @db.VarChar(100)
   // POS/И-баримт: B2B | B2C (хэвлэлтийн үед)
-  ebarimtReceiptType String?      @map("ebarimt_receipt_type") @db.VarChar(10)
+  ebarimtReceiptType  String?       @map("ebarimt_receipt_type") @db.VarChar(10)
+  // Буцаалтын мэдээлэл
+  returnedAt          DateTime?     @map("returned_at") @db.Timestamptz(3)
+  returnReason        String?       @map("return_reason") @db.VarChar(500)
+  returnedById        Int?          @map("returned_by_id")
+  returnNote          String?       @map("return_note") @db.VarChar(1000)
   orderNumber       String?       @unique @map("order_number") @db.VarChar(50)
   orderItems        OrderItem[]
   agent             Employee      @relation("AgentOrders", fields: [agentId], references: [id])
   customer          Customer      @relation(fields: [customerId], references: [id])
   payments          Payment[]
   returns           Return[]
+  returnedBy        Employee?     @relation("OrderReturns", fields: [returnedById], references: [id])
 
   @@map("orders")
 }
 
 model OrderItem {
-  id        Int     @id @default(autoincrement())
-  orderId   Int     @map("order_id")
-  productId Int     @map("product_id")
-  quantity  Int
-  unitPrice Decimal @map("unit_price") @db.Decimal(10, 2)
-  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product   Product @relation(fields: [productId], references: [id])
+  id            Int        @id @default(autoincrement())
+  orderId       Int        @map("order_id")
+  productId     Int        @map("product_id")
+  quantity      Int
+  unitPrice     Decimal    @map("unit_price") @db.Decimal(10, 2)
+  // Захиалга үүсгэх үед сонгогдсон урамшууллын ID
+  promotionId   Int?       @map("promotion_id")
+  order         Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product       Product    @relation(fields: [productId], references: [id])
+  promotion     Promotion? @relation(fields: [promotionId], references: [id])
 
   @@map("order_items")
 }
@@ -321,6 +331,7 @@ enum PaymentStatus {
   Pending
   Partial
   Overdue
+  Refunded
 }
 
 enum DeliveryStatus {
@@ -390,11 +401,12 @@ model Promotion {
   buyQty          Int?          @map("buy_qty")
   freeQty         Int?          @map("free_qty")
   startDate       DateTime      @map("start_date") @db.Timestamptz(3)
-  endDate         DateTime      @map("end_date") @db.Timestamptz(3)
+  endDate         DateTime?     @map("end_date") @db.Timestamptz(3)
   isActive        Boolean       @default(true) @map("is_active")
   createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
   product         Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems      OrderItem[]
 
   @@index([productId, endDate])
   @@map("promotions")

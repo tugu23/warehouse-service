@@ -17,6 +17,7 @@ export const authMiddleware = (
   next: NextFunction
 ): void => {
   try {
+    logger.debug(`auth middleware ${req.method} ${req.originalUrl}`);
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -67,6 +68,7 @@ export const checkRole = (allowedRoles: string[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     try {
       const authReq = req as AuthRequest;
+      logger.debug(`checkRole ${req.method} ${req.originalUrl}`);
 
       if (!authReq.user) {
         res.status(401).json({

@@ -5,6 +5,7 @@ import {
   getAllCustomers,
   getCustomerById,
   updateCustomer,
+  deleteCustomer,
   removeDuplicateCustomers,
 } from "../controllers/customers.controller";
 import { authMiddleware, checkRole } from "../middleware/auth.middleware";
@@ -279,6 +280,12 @@ router.put(
     body("direction").optional().isString(),
   ]),
   updateCustomer
+);
+
+router.delete(
+  "/:id",
+  validate([param("id").isInt().withMessage("Valid customer ID is required")]),
+  deleteCustomer
 );
 
 /**

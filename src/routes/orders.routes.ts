@@ -12,6 +12,7 @@ import {
   getMarketOrders,
   getStoreOrders,
   getOrderReceiptPDF,
+  deleteOrder,
 } from "../controllers/orders.controller";
 import { authMiddleware, checkRole } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validation.middleware";
@@ -621,6 +622,37 @@ router.post(
       next(error);
     }
   }
+);
+
+/**
+ * @swagger
+ * /api/orders/{id}:
+ *   delete:
+ *     summary: Delete an order
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Permanently delete an order and restore stock (Admin, Manager only)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Order ID
+ *     responses:
+ *       200:
+ *         description: Order deleted successfully
+ *       404:
+ *         description: Order not found
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
+router.delete(
+  "/:id",
+  checkRole(["Admin", "Manager"]),
+  validate([param("id").isInt().withMessage("Valid order ID is required")]),
+  deleteOrder
 );
 
 export default router;

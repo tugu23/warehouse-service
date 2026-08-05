@@ -128,7 +128,7 @@ export const getAllProducts = async (
         where: {
           isActive: true,
           startDate: { lte: now },
-          endDate: { gte: now },
+          OR: [{ endDate: null }, { endDate: { gte: now } }],
         },
         orderBy: { endDate: "asc" as const },
       },
@@ -189,7 +189,7 @@ export const getProductById = async (
           where: {
             isActive: true,
             startDate: { lte: now },
-            endDate: { gte: now },
+            OR: [{ endDate: null }, { endDate: { gte: now } }],
           },
           orderBy: { endDate: "asc" },
         },

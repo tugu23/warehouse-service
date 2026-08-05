@@ -3,6 +3,7 @@ import autoTable from "jspdf-autotable";
 import QRCode from "qrcode";
 import { RobotoRegular } from "../fonts/Roboto-Regular";
 import { RobotoBold } from "../fonts/Roboto-Bold";
+import { getBuyXGetYBonusQty, isPromotionCurrentlyActive } from "../utils/promotion.utils";
 
 interface ReceiptItem {
   productName: string;
@@ -10,6 +11,9 @@ interface ReceiptItem {
   quantity: number;
   unitPrice: number;
   total: number;
+  bonusFreeQty?: number;
+  /** Only set when a promotion was explicitly applied to this item */
+  promotionId?: number | null;
 }
 
 interface ReceiptData {
@@ -326,14 +330,30 @@ class PDFService {
 
     yPos += 3;
 
-    const tableData = data.items.map((item, index) => [
-      (index + 1).toString(),
-      item.productName,
-      item.productCode,
-      item.quantity.toString(),
-      this.formatCurrencyShort(item.unitPrice),
-      this.formatCurrencyShort(item.total),
-    ]);
+    const tableData: string[][] = [];
+    let rowNo = 0;
+    for (const item of data.items) {
+      rowNo++;
+      tableData.push([
+        rowNo.toString(),
+        item.productName,
+        item.productCode,
+        item.quantity.toString(),
+        this.formatCurrencyShort(item.unitPrice),
+        this.formatCurrencyShort(item.total),
+      ]);
+      const bonusRows = item.bonusFreeQty ?? 0;
+      for (let b = 0; b < bonusRows; b++) {
+        tableData.push([
+          '',
+          `${item.productName} (Урамшуулал)`,
+          '',
+          '1',
+          '0',
+          '0',
+        ]);
+      }
+    }
 
     autoTable(doc, {
       startY: yPos,
@@ -363,6 +383,17 @@ class PDFService {
         5: { halign: "right", cellWidth: 20 },
       },
       margin: { left: 10, right: 10 },
+      didParseCell: (cellData) => {
+        if (
+          cellData.section === 'body' &&
+          typeof cellData.cell.raw === 'string' &&
+          cellData.cell.raw.includes('(Урамшуулал)')
+        ) {
+          cellData.cell.styles.fillColor = [220, 255, 230];
+          cellData.cell.styles.textColor = [0, 100, 0];
+          cellData.cell.styles.fontStyle = 'italic';
+        }
+      },
     });
 
     const finalY = (doc as any).lastAutoTable.finalY || yPos;

@@ -3,73 +3,120 @@ import logger from '../utils/logger';
 
 interface ETaxOrganizationInfo {
   regno: string;
+  tin: string;
   name: string;
   address?: string;
   vatPayer?: boolean;
   status?: string;
 }
 
-interface ETaxApiResponse {
-  status: string;
+interface EbarimtTinLookupResponse {
+  status?: number;
+  msg?: string;
+  data?: string | number;
+}
+
+interface EbarimtInfoLookupResponse {
+  status?: number;
+  msg?: string;
   data?: {
-    regno: string;
-    name: string;
+    name?: string;
     address?: string;
-    vatRegistered?: boolean;
-    status?: string;
+    vatpayer?: boolean;
   };
   message?: string;
 }
 
-/**
- * Fetch organization information from Mongolia's e-Tax API
- * API Documentation: https://developer.itc.gov.mn/docs/etax-api/nqh4bo7fueesg-bajguullagyn-medeelel-avah
- */
+const EBARIMT_CHECK_API = 'https://api.ebarimt.mn/api/info/check';
+
+const isTinLike = (value: string) => /^\d{10,12}$/.test(value);
+const isOrgRegLike = (value: string) =>
+  /^\d{7}$/.test(value) || /^[A-Z\u0410-\u042f\u0401\u04e8\u04ae]{2}\d{8}$/.test(value);
+
+const fetchOrganizationByTin = async (
+  tin: string,
+  regnoForLog: string
+): Promise<ETaxOrganizationInfo | null> => {
+  const infoResponse = await axios.get<EbarimtInfoLookupResponse>(`${EBARIMT_CHECK_API}/getInfo`, {
+    params: { tin },
+    timeout: 10000,
+    headers: {
+      Accept: 'application/json',
+    },
+    validateStatus: () => true,
+  });
+
+  if (infoResponse.data?.status !== 200) {
+    logger.warn(`No organization info found for TIN: ${tin}`, {
+      regno: regnoForLog,
+      response: infoResponse.data,
+    });
+    return null;
+  }
+
+  const orgData = infoResponse.data.data;
+  const name = orgData?.name?.trim() || '';
+
+  if (!name) {
+    logger.warn(`Organization name missing for TIN: ${tin}`, {
+      regno: regnoForLog,
+      response: infoResponse.data,
+    });
+    return null;
+  }
+
+  return {
+    regno: regnoForLog,
+    tin,
+    name,
+    address: orgData?.address || undefined,
+    vatPayer: orgData?.vatpayer || false,
+    status: 'active',
+  };
+};
+
 export const getOrganizationInfo = async (
   registrationNumber: string
 ): Promise<ETaxOrganizationInfo | null> => {
   try {
-    // Clean registration number (remove spaces, dashes)
-    const cleanRegno = registrationNumber.replace(/[\s-]/g, '');
+    const cleanRegno = registrationNumber.replace(/[\s-]/g, '').toUpperCase();
 
-    // Validate format (7-digit registration number)
-    if (!/^\d{7}$/.test(cleanRegno)) {
+    if (!isTinLike(cleanRegno) && !isOrgRegLike(cleanRegno)) {
       logger.warn(`Invalid registration number format: ${registrationNumber}`);
       return null;
     }
 
     logger.info(`Fetching organization info from e-Tax API for regno: ${cleanRegno}`);
 
-    // Call Mongolia e-Tax API
-    const response = await axios.get<ETaxApiResponse>(
-      `https://api.ebarimt.mn/api/info/check/getTinInfo`,
-      {
-        params: {
-          regno: cleanRegno,
-        },
-        timeout: 10000, // 10 second timeout
-        headers: {
-          'Accept': 'application/json',
-        },
-      }
-    );
-
-    if (response.data && response.data.data) {
-      const orgData = response.data.data;
-      
-      logger.info(`Successfully fetched organization info: ${orgData.name}`);
-
-      return {
-        regno: orgData.regno,
-        name: orgData.name,
-        address: orgData.address || undefined,
-        vatPayer: orgData.vatRegistered || false,
-        status: orgData.status || 'active',
-      };
+    if (isTinLike(cleanRegno)) {
+      return fetchOrganizationByTin(cleanRegno, cleanRegno);
     }
 
-    logger.warn(`No organization found for regno: ${cleanRegno}`);
-    return null;
+    const tinResponse = await axios.get<EbarimtTinLookupResponse>(`${EBARIMT_CHECK_API}/getTinInfo`, {
+      params: { regNo: cleanRegno },
+      timeout: 10000,
+      headers: {
+        Accept: 'application/json',
+      },
+      validateStatus: () => true,
+    });
+
+    if (tinResponse.data?.status !== 200 || !tinResponse.data?.data) {
+      logger.warn(`No TIN found for regno: ${cleanRegno}`, {
+        response: tinResponse.data,
+      });
+      return null;
+    }
+
+    const tin = String(tinResponse.data.data).trim();
+    const organization = await fetchOrganizationByTin(tin, cleanRegno);
+    if (organization) {
+      logger.info(`Successfully fetched organization info: ${organization.name}`, {
+        regno: cleanRegno,
+        tin,
+      });
+    }
+    return organization;
   } catch (error) {
     if (axios.isAxiosError(error)) {
       if (error.response?.status === 404) {
@@ -87,13 +134,9 @@ export const getOrganizationInfo = async (
   }
 };
 
-/**
- * Validate if registration number exists in e-Tax system
- */
 export const validateRegistrationNumber = async (
   registrationNumber: string
 ): Promise<boolean> => {
   const info = await getOrganizationInfo(registrationNumber);
   return info !== null;
 };
-

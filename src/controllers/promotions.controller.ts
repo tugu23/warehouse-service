@@ -41,9 +41,13 @@ function parsePromotionPayload(
   }
 
   const startDate =
-    body.startDate !== undefined ? new Date(body.startDate) : undefined;
+    body.startDate !== undefined && body.startDate !== null && body.startDate !== ""
+      ? new Date(body.startDate as string)
+      : undefined;
   const endDate =
-    body.endDate !== undefined ? new Date(body.endDate) : undefined;
+    body.endDate !== undefined && body.endDate !== null && body.endDate !== ""
+      ? new Date(body.endDate as string)
+      : undefined;
 
   if (startDate && Number.isNaN(startDate.getTime())) {
     throw new AppError("Эхлэх огноо буруу байна", 400);
@@ -51,10 +55,7 @@ function parsePromotionPayload(
   if (endDate && Number.isNaN(endDate.getTime())) {
     throw new AppError("Дуусах огноо буруу байна", 400);
   }
-  if (!partial && (!startDate || !endDate)) {
-    throw new AppError("Эхлэх ба дуусах огноог зааж өгнө үү", 400);
-  }
-  if (startDate && endDate && endDate.getTime() <= startDate.getTime()) {
+  if (!partial && startDate && endDate && endDate.getTime() <= startDate.getTime()) {
     throw new AppError("Дуусах огноо нь эхлэх огнооноос хойш байх ёстой", 400);
   }
 
@@ -178,13 +179,15 @@ export const listPromotionsByProduct = async (
     const where: any = { productId };
     if (onlyActive) {
       where.isActive = true;
-      where.endDate = { gte: now };
-      where.startDate = { lte: now };
+      where.AND = [
+        { startDate: { lte: now } },
+        { OR: [{ endDate: null }, { endDate: { gte: now } }] },
+      ];
     }
 
     const promotions = await prisma.promotion.findMany({
       where,
-      orderBy: [{ isActive: "desc" }, { endDate: "asc" }],
+      orderBy: [{ isActive: "desc" }, { startDate: "asc" }],
     });
 
     res.json({
@@ -225,8 +228,8 @@ export const createPromotion = async (
         minQuantity: data.minQuantity ?? null,
         buyQty: data.buyQty ?? null,
         freeQty: data.freeQty ?? null,
-        startDate: data.startDate!,
-        endDate: data.endDate!,
+        startDate: data.startDate ?? new Date(),
+        endDate: data.endDate ?? null,
         isActive: data.isActive ?? true,
       },
     });
@@ -265,7 +268,7 @@ export const updatePromotion = async (
     const newType = partial.type ?? existing.type;
     const newStart = partial.startDate ?? existing.startDate;
     const newEnd = partial.endDate ?? existing.endDate;
-    if (newEnd.getTime() <= newStart.getTime()) {
+    if (newEnd && newStart && newEnd.getTime() <= newStart.getTime()) {
       throw new AppError(
         "Дуусах огноо нь эхлэх огнооноос хойш байх ёстой",
         400

@@ -85,6 +85,10 @@ interface PosApiReceiptResponse {
   }>;
 }
 
+function getReceiptId(raw: PosApiReceiptResponse): string | undefined {
+  return raw.receipts?.[0]?.id || raw.id;
+}
+
 interface EBarimtResponse {
   success: boolean;
   message?: string;
@@ -94,6 +98,7 @@ interface EBarimtResponse {
     date: string;
     lottery: string;
     qrData: string;
+    receiptType: "B2B_RECEIPT" | "B2C_RECEIPT"; // Actual type used in API
     easyRegister?: boolean;
     receipts?: Array<{ id: string; bankAccountId?: string }>;
   };
@@ -698,39 +703,39 @@ class EBarimtService {
       });
 
       // Send request to E-Barimt API (official endpoint: POST /rest/receipt)
-      // PosAPI 3.0 returns flat response: { id, posId, status, message, qrData, lottery, date, ... }
+      // PosAPI 3.0 returns top-level metadata, but the printable receipt ID lives in receipts[0].id
       const response = await this.client.post<PosApiReceiptResponse>(
         "/rest/receipt",
         requestData
       );
 
       const raw = response.data;
+      const receiptId = getReceiptId(raw);
 
       logger.info("E-Barimt API response received", {
         orderNumber: orderData.orderNumber,
         status: raw.status,
-        id: raw.id,
+        id: receiptId,
         response: JSON.stringify(raw, null, 2),
       });
 
       // PosAPI returns status field; a valid ДДТД means success
-      const isSuccess = !!raw.id && raw.id.length > 0;
-
-      if (isSuccess) {
+      if (receiptId) {
         logger.info("Receipt registered successfully with E-Barimt", {
           orderNumber: orderData.orderNumber,
-          billId: raw.id,
+          billId: receiptId,
           lottery: raw.lottery,
         });
 
         return {
           success: true,
           data: {
-            id: raw.id,
-            billId: raw.id,
+            id: receiptId,
+            billId: receiptId,
             date: raw.date,
             lottery: raw.lottery,
             qrData: raw.qrData,
+            receiptType: receiptType as "B2B_RECEIPT" | "B2C_RECEIPT",
             easyRegister: raw.easyRegister,
             receipts: raw.receipts,
           },
@@ -892,7 +897,8 @@ class EBarimtService {
             billId: billId,
             date: formattedDate || "",
             lottery: "",
-            qrData: ""
+            qrData: "",
+            receiptType: "B2C_RECEIPT" as const,
           },
         };
       }
@@ -949,6 +955,7 @@ class EBarimtService {
             date: date ? this.formatPosApiDate(date) : "",
             lottery: "",
             qrData: "",
+            receiptType: "B2C_RECEIPT" as const,
           },
         };
       }
@@ -1012,22 +1019,22 @@ class EBarimtService {
       );
 
       const raw = response.data;
-      const isSuccess = !!raw.id && raw.id.length > 0;
-
-      if (isSuccess) {
+      const receiptId = getReceiptId(raw);
+      if (receiptId) {
         logger.info("Corrected receipt created", {
           originalBillId: editRequest.originalBillId,
-          newBillId: raw.id,
+          newBillId: receiptId,
         });
 
         return {
           success: true,
           data: {
-            id: raw.id,
-            billId: raw.id,
+            id: receiptId,
+            billId: receiptId,
             date: raw.date,
             lottery: raw.lottery,
             qrData: raw.qrData,
+            receiptType: "B2C_RECEIPT" as const,
             easyRegister: raw.easyRegister,
             receipts: raw.receipts,
           },

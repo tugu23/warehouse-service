@@ -1,8 +1,9 @@
-import { Response, NextFunction } from "express";
+﻿import { Response, NextFunction } from "express";
 import { Prisma, AgentSalesTargetPeriodType } from "@prisma/client";
 import { AuthRequest } from "../middleware/auth.middleware";
 import { AppError } from "../middleware/error.middleware";
 import prisma from "../db/prisma";
+import logger from "../utils/logger";
 import {
   assertAgentKpiAgentAccess,
   assertManagerOrAdmin,
@@ -23,12 +24,14 @@ import {
   getAgentRanking,
   getCategoryAnalysis,
   getTrendData,
+  getSalesByBrandProduct,
+  SalesByBrandResult,
 } from "../services/agent-kpi.service";
 
 function parseGranularity(q: unknown): KpiGranularity {
   const g = String(q || "day").toLowerCase();
   if (g === "day" || g === "month" || g === "year") return g;
-  throw new AppError("granularity нь day | month | year байх ёстой", 400);
+  throw new AppError("granularity Ð½ÑŒ day | month | year Ð±Ð°Ð¹Ñ… Ñ‘ÑÑ‚Ð¾Ð¹", 400);
 }
 
 export const getAgentKpiSummary = async (
@@ -37,26 +40,23 @@ export const getAgentKpiSummary = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('[getAgentKpiSummary] START', req.query);
+    logger.debug("agent-kpi summary request received");
     const { from, to, agentId: agentIdQ, granularity: gQ } = req.query;
     if (!from || !to) {
-      throw new AppError("from болон to (YYYY-MM-DD) заавал", 400);
+      throw new AppError("from Ð±Ð¾Ð»Ð¾Ð½ to (YYYY-MM-DD) Ð·Ð°Ð°Ð²Ð°Ð»", 400);
     }
     const agentId = assertAgentKpiAgentAccess(
       req,
       agentIdQ ? parseInt(String(agentIdQ), 10) : undefined
     );
-    console.log('[getAgentKpiSummary] Fetching summary for agent:', agentId);
     const summary = await getSummary({
       agentId,
       from: String(from),
       to: String(to),
       granularity: parseGranularity(gQ),
     });
-    console.log('[getAgentKpiSummary] Got summary, sending response');
     res.json({ status: "success", data: summary });
   } catch (e) {
-    console.error('[getAgentKpiSummary] ERROR:', e);
     next(e);
   }
 };
@@ -67,18 +67,16 @@ export const getAgentKpiByProduct = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    console.log('[getAgentKpiByProduct] START', req.query);
+    logger.debug("agent-kpi by-product request received");
     const { from, to, agentId: agentIdQ } = req.query;
     if (!from || !to) {
-      throw new AppError("from болон to (YYYY-MM-DD) заавал", 400);
+      throw new AppError("from Ð±Ð¾Ð»Ð¾Ð½ to (YYYY-MM-DD) Ð·Ð°Ð°Ð²Ð°Ð»", 400);
     }
     const agentId = assertAgentKpiAgentAccess(
       req,
       agentIdQ ? parseInt(String(agentIdQ), 10) : undefined
     );
-    console.log('[getAgentKpiByProduct] Fetching products for agent:', agentId);
     const rows = await getByProduct(agentId, String(from), String(to));
-    console.log('[getAgentKpiByProduct] Got rows:', rows.length);
     const data = rows.map((r) => ({
       productId: r.product_id,
       productName: r.product_name,
@@ -87,10 +85,8 @@ export const getAgentKpiByProduct = async (
       boxes: Number(r.boxes),
       amount: parseFloat(r.amount),
     }));
-    console.log('[getAgentKpiByProduct] Sending response');
     res.json({ status: "success", data: { products: data } });
   } catch (e) {
-    console.error('[getAgentKpiByProduct] ERROR:', e);
     next(e);
   }
 };
@@ -104,7 +100,7 @@ export const getAgentKpiMultiAgentDaily = async (
     assertManagerOrAdmin(req);
     const { date } = req.query;
     if (!date) {
-      throw new AppError("date (YYYY-MM-DD) заавал", 400);
+      throw new AppError("date (YYYY-MM-DD) Ð·Ð°Ð°Ð²Ð°Ð»", 400);
     }
     const dateStr = String(date);
     parseDateOnlyUtc(dateStr);
@@ -139,7 +135,7 @@ export const getAgentKpiTargets = async (
   try {
     const { employeeId: eid } = req.query;
     if (!eid) {
-      throw new AppError("employeeId заавал", 400);
+      throw new AppError("employeeId Ð·Ð°Ð°Ð²Ð°Ð»", 400);
     }
     const employeeId = parseInt(String(eid), 10);
     assertAgentKpiAgentAccess(req, employeeId);
@@ -188,7 +184,7 @@ export const postAgentKpiTarget = async (
       req.body;
     if (!employeeId || !periodType || !periodStart || targetAmount == null) {
       throw new AppError(
-        "employeeId, periodType, periodStart, targetAmount заавал",
+        "employeeId, periodType, periodStart, targetAmount Ð·Ð°Ð°Ð²Ð°Ð»",
         400
       );
     }
@@ -198,7 +194,7 @@ export const postAgentKpiTarget = async (
       pt !== AgentSalesTargetPeriodType.MONTH &&
       pt !== AgentSalesTargetPeriodType.YEAR
     ) {
-      throw new AppError("periodType буруу", 400);
+      throw new AppError("periodType Ð±ÑƒÑ€ÑƒÑƒ", 400);
     }
     const ps = parseDateOnlyUtc(String(periodStart));
     const created = await createTarget({
@@ -228,9 +224,9 @@ export const patchAgentKpiTarget = async (
   try {
     assertManagerOrAdmin(req);
     const id = parseInt(req.params.id, 10);
-    if (Number.isNaN(id)) throw new AppError("ID буруу", 400);
+    if (Number.isNaN(id)) throw new AppError("ID Ð±ÑƒÑ€ÑƒÑƒ", 400);
     const existing = await getTargetById(id);
-    if (!existing) throw new AppError("Олдсонгүй", 404);
+    if (!existing) throw new AppError("ÐžÐ»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹", 404);
     const { targetAmount, targetBoxQty } = req.body;
     const updated = await updateTarget(id, {
       ...(targetAmount !== undefined && {
@@ -260,7 +256,7 @@ export const deleteAgentKpiTarget = async (
   try {
     assertManagerOrAdmin(req);
     const id = parseInt(req.params.id, 10);
-    if (Number.isNaN(id)) throw new AppError("ID буруу", 400);
+    if (Number.isNaN(id)) throw new AppError("ID Ð±ÑƒÑ€ÑƒÑƒ", 400);
     await deleteTarget(id);
     res.json({ status: "success", data: null });
   } catch (e) {
@@ -276,13 +272,20 @@ export const getAgentKpiDashboardSummary = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    logger.debug("agent-kpi dashboard-summary request received");
     const { from, to, agentId: agentIdQ } = req.query;
     if (!from || !to) {
-      throw new AppError("from болон to (YYYY-MM-DD) заавал", 400);
+      throw new AppError("from Ð±Ð¾Ð»Ð¾Ð½ to (YYYY-MM-DD) Ð·Ð°Ð°Ð²Ð°Ð»", 400);
     }
-    const agentId = agentIdQ
-      ? assertAgentKpiAgentAccess(req, parseInt(String(agentIdQ), 10))
-      : undefined;
+    const isPrivileged =
+      req.user?.role === "Admin" || req.user?.role === "Manager";
+    const agentId =
+      isPrivileged && !agentIdQ
+        ? undefined
+        : assertAgentKpiAgentAccess(
+            req,
+            agentIdQ ? parseInt(String(agentIdQ), 10) : undefined
+          );
 
     const summary = await getDashboardSummary({
       from: String(from),
@@ -305,7 +308,7 @@ export const getAgentKpiRanking = async (
     assertManagerOrAdmin(req);
     const { from, to, sortBy } = req.query;
     if (!from || !to) {
-      throw new AppError("from болон to (YYYY-MM-DD) заавал", 400);
+      throw new AppError("from Ð±Ð¾Ð»Ð¾Ð½ to (YYYY-MM-DD) Ð·Ð°Ð°Ð²Ð°Ð»", 400);
     }
 
     const ranking = await getAgentRanking({
@@ -326,13 +329,20 @@ export const getAgentKpiCategoryAnalysis = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    logger.debug("agent-kpi category-analysis request received");
     const { from, to, agentId: agentIdQ } = req.query;
     if (!from || !to) {
-      throw new AppError("from болон to (YYYY-MM-DD) заавал", 400);
+      throw new AppError('from болон to (YYYY-MM-DD) заавал', 400);
     }
-    const agentId = agentIdQ
-      ? assertAgentKpiAgentAccess(req, parseInt(String(agentIdQ), 10))
-      : undefined;
+
+    const isPrivileged = req.user?.role === 'Admin' || req.user?.role === 'Manager';
+    const agentId =
+      isPrivileged && !agentIdQ
+        ? undefined
+        : assertAgentKpiAgentAccess(
+            req,
+            agentIdQ ? parseInt(String(agentIdQ), 10) : undefined
+          );
 
     const categories = await getCategoryAnalysis({
       from: String(from),
@@ -340,30 +350,36 @@ export const getAgentKpiCategoryAnalysis = async (
       agentId,
     });
 
-    res.json({ status: "success", data: { categories } });
+    res.json({ status: 'success', data: { categories } });
   } catch (e) {
     next(e);
   }
 };
-
 export const getAgentKpiTrendData = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
+    logger.debug("agent-kpi trend-data request received");
     const { from, to, agentId: agentIdQ, granularity } = req.query;
     if (!from || !to) {
-      throw new AppError("from болон to (YYYY-MM-DD) заавал", 400);
+      throw new AppError('from болон to (YYYY-MM-DD) заавал', 400);
     }
-    const agentId = agentIdQ
-      ? assertAgentKpiAgentAccess(req, parseInt(String(agentIdQ), 10))
-      : undefined;
 
     const gran = String(granularity || 'day');
     if (gran !== 'day' && gran !== 'month') {
-      throw new AppError("granularity нь day эсвэл month байх ёстой", 400);
+      throw new AppError('granularity нь day эсвэл month байх ёстой', 400);
     }
+
+    const isPrivileged = req.user?.role === 'Admin' || req.user?.role === 'Manager';
+    const agentId =
+      isPrivileged && !agentIdQ
+        ? undefined
+        : assertAgentKpiAgentAccess(
+            req,
+            agentIdQ ? parseInt(String(agentIdQ), 10) : undefined
+          );
 
     const trend = await getTrendData({
       from: String(from),
@@ -372,8 +388,45 @@ export const getAgentKpiTrendData = async (
       granularity: gran,
     });
 
-    res.json({ status: "success", data: { trend } });
+    res.json({ status: 'success', data: { trend } });
   } catch (e) {
     next(e);
   }
 };
+export const getAgentKpiSalesByBrand = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    logger.debug("agent-kpi sales-by-brand request received");
+    const { from, to, agentId: agentIdQ, granularity } = req.query;
+    if (!from || !to) {
+      throw new AppError('from болон to (YYYY-MM-DD) заавал', 400);
+    }
+
+    const salesGranularity = parseGranularity(granularity);
+    const isPrivileged = req.user?.role === 'Admin' || req.user?.role === 'Manager';
+    const agentId =
+      isPrivileged && !agentIdQ
+        ? undefined
+        : assertAgentKpiAgentAccess(
+            req,
+            agentIdQ ? parseInt(String(agentIdQ), 10) : undefined
+          );
+
+    const result = await getSalesByBrandProduct({
+      from: String(from),
+      to: String(to),
+      agentId,
+      granularity: salesGranularity,
+    });
+
+    res.json({ status: 'success', data: result });
+  } catch (e) {
+    next(e);
+  }
+};
+
+
+

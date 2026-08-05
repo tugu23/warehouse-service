@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { validationResult, ValidationChain } from "express-validator";
+import logger from "../utils/logger";
 
 export const validate = (validations: ValidationChain[]) => {
   return async (
@@ -8,7 +9,9 @@ export const validate = (validations: ValidationChain[]) => {
     next: NextFunction
   ): Promise<void> => {
     // Run all validations
+    logger.debug(`validate start ${req.method} ${req.originalUrl}`);
     await Promise.all(validations.map((validation) => validation.run(req)));
+    logger.debug(`validate end ${req.method} ${req.originalUrl}`);
 
     const errors = validationResult(req);
     if (errors.isEmpty()) {

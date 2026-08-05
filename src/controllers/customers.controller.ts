@@ -286,6 +286,40 @@ export const updateCustomer = async (
   }
 };
 
+export const deleteCustomer = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const customer = await prisma.customer.findUnique({
+      where: { id },
+      include: {
+        _count: { select: { orders: true, returns: true, deliveryPlans: true } },
+      },
+    });
+
+    if (!customer) {
+      throw new AppError(req.t.customers.notFound, 404);
+    }
+
+    const linkedRecords =
+      customer._count.orders + customer._count.returns + customer._count.deliveryPlans;
+    if (linkedRecords > 0) {
+      throw new AppError(
+        "Захиалга эсвэл хүргэлтийн түүхтэй харилцагчийг устгах боломжгүй",
+        409
+      );
+    }
+
+    await prisma.customer.delete({ where: { id } });
+    res.json({ status: "success", message: "Харилцагч устгагдлаа" });
+  } catch (error) {
+    next(error);
+  }
+};
+
 /**
  * Давхардсан харилцагчийг цэвэрлэх (Admin only).
  * Ижил (нэр + утас)-тай бүлгүүдэд хамгийн бага ID-тай мөрийг үлдээж, бусадын захиалга/буцаалт/хүргэлтийн
