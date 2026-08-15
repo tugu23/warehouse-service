@@ -397,7 +397,7 @@ export const getProductByBarcode = async (
       // If multiple products found, return all
       res.json({
         status: "success",
-        data: { 
+        data: {
           products: serializeProducts(
             products.map((product) => withResolvedProductActiveState(product))
           ),
@@ -406,6 +406,44 @@ export const getProductByBarcode = async (
         },
       });
     }
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteProduct = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    // Check if product exists and has related orders
+    const product = await prisma.product.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        _count: { select: { orderItems: true, returns: true, inventoryBalances: true } },
+      },
+    });
+
+    if (!product) {
+      throw new AppError(req.t.products.notFound, 404);
+    }
+
+    // Check for linked orders
+    const linkedRecords = product._count.orderItems + product._count.returns;
+    if (linkedRecords > 0) {
+      throw new AppError(
+        "Захиалга эсвэл буцаалттай барааг устгах боломжгүй",
+        409
+      );
+    }
+
+    await prisma.product.delete({ where: { id: parseInt(id) } });
+    logger.info(`Product deleted: ${product.nameMongolian}`);
+
+    res.json({ status: "success", message: "Бараа устгагдлаа" });
   } catch (error) {
     next(error);
   }

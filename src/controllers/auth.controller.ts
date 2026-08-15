@@ -68,3 +68,39 @@ export const login = async (
     next(error);
   }
 };
+
+export const getCurrentUser = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    // User info is attached to req by auth middleware
+    const userId = (req as any).user?.userId;
+
+    if (!userId) {
+      throw new AppError('Unauthorized', 401);
+    }
+
+    const employee = await prisma.employee.findUnique({
+      where: { id: userId },
+      include: { role: true },
+    });
+
+    if (!employee) {
+      throw new AppError('User not found', 404);
+    }
+
+    res.json({
+      status: "success",
+      data: {
+        id: employee.id,
+        name: employee.name,
+        email: employee.email,
+        role: employee.role.name,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};

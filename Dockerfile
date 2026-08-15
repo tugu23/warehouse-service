@@ -1,7 +1,7 @@
-# Multi-stage build with npm
+# Multi-stage build
 
 # Stage 1: Build
-FROM node:18-alpine AS builder
+FROM --platform=linux/amd64 node:18-alpine AS builder
 WORKDIR /app
 
 # Install build dependencies
@@ -15,20 +15,20 @@ ENV PRISMA_CLIENT_ENGINE_TYPE=binary
 COPY package.json pnpm-lock.yaml ./
 COPY prisma ./prisma/
 
-# Install dependencies
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
+# Install dependencies with npm
+RUN npm install
 
 # Copy source code
 COPY . .
 
 # Generate Prisma Client
-RUN npm run prisma:generate
+RUN npx prisma generate
 
 # Build the application
 RUN npm run build
 
 # Stage 2: Production
-FROM node:18-alpine AS production
+FROM --platform=linux/amd64 node:18-alpine AS production
 WORKDIR /app
 
 # Install OpenSSL
@@ -41,14 +41,13 @@ ENV NODE_ENV=production
 
 # Copy package files
 COPY package.json pnpm-lock.yaml ./
+COPY prisma ./prisma/
 
-# Install production dependencies only
-RUN npm install -g pnpm && pnpm install --prod --frozen-lockfile
+# Install production dependencies with npm
+RUN npm install --omit=dev
 
-# Copy Prisma schema and generated client from builder
-COPY --from=builder /app/prisma/schema.prisma ./prisma/schema.prisma
-COPY --from=builder /app/node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/@prisma/client ./node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/@prisma/client
-COPY --from=builder /app/node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/.prisma ./node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/.prisma
+# Generate Prisma Client
+RUN npx prisma generate
 
 # Copy built application
 COPY --from=builder /app/dist ./dist
@@ -71,10 +70,6 @@ USER nodejs
 
 # Expose port
 EXPOSE 3000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
 # Start application
 CMD ["node", "dist/server.js"]

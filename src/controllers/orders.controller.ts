@@ -562,8 +562,13 @@ export const updateOrder = async (
     });
 
     if (!existingOrder) throw new AppError(req.t.orders.notFound, 404);
-    if (existingOrder.status === "Cancelled") throw new AppError("Цуцлагдсан захиалгыг засах боломжгүй", 400);
-    if (existingOrder.ebarimtRegistered) throw new AppError("И-баримт бүртгэгдсэн захиалгыг засах боломжгүй", 400);
+    // Зөвхөн И-баримт хэвлэгдээгүй үед захиалга засах боломжтой
+    if (existingOrder.ebarimtRegistered) {
+      throw new AppError("И-баримт хэвлэгдсэн тул захиалгыг засах боломжгүй. Эхлээд И-баримтыг буцаагаад дараа нь засах уу.", 400);
+    }
+    if (existingOrder.status === "Cancelled") {
+      throw new AppError("Цуцлагдсан захиалгыг засах боломжгүй", 400);
+    }
 
     if (authReq.user?.role === "SalesAgent" && existingOrder.agentId !== authReq.user.userId) {
       throw new AppError(req.t.auth.forbidden, 403);
@@ -1406,29 +1411,66 @@ export const deleteOrder = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    const authReq = req as AuthRequest;
     const orderId = parseInt(req.params.id);
 
-    await prisma.$transaction(async (tx) => {
-      // Find order with items
-      const order = await tx.order.findUnique({
-        where: { id: orderId },
-        include: { orderItems: true },
-      });
+    if (isNaN(orderId) || orderId <= 0) {
+      throw new AppError("Захиалгын ID буруу байна", 400);
+    }
 
-      if (!order) {
-        throw new AppError("Захиалга олдсонгүй", 404);
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        orderItems: true,
+        payments: true,
+        returns: true,
+      },
+    });
+
+    if (!order) {
+      throw new AppError("Захиалга олдсонгүй", 404);
+    }
+
+    // Зөвхөн эдгээр тохиолдолд устгах боломжтой:
+    // 1. Цуцлагдсан захиалга
+    // 2. И-баримт хэвлэгдээгүй захиалга (ebarimtRegistered = false)
+    // 3. И-баримт буцаагдсан захиалга (ebarimtReturnId байгаа)
+    const canDelete =
+      order.status === "Cancelled" ||
+      !order.ebarimtRegistered ||
+      order.ebarimtReturnId != null;
+
+    if (!canDelete) {
+      throw new AppError(
+        "И-баримт хэвлэгдсэн идэвхтэй захиалгыг устгах боломжгүй. Эхлээд И-баримтыг буцаагаад дараа нь устгах уу.",
+        400
+      );
+    }
+
+    // Check for returns that might block deletion
+    if (order.returns && order.returns.length > 0) {
+      // Allow deletion if there are returns but the order is already cancelled
+      if (order.status !== "Cancelled") {
+        throw new AppError(
+          "Буцаалттай захиалгыг устгах боломжгүй. Эхлээд буцаалтыг цуцална уу.",
+          400
+        );
       }
+    }
 
-      // Restore stock for each item
-      for (const item of order.orderItems) {
-        await tx.product.update({
-          where: { id: item.productId },
-          data: {
-            stockQuantity: {
-              increment: item.quantity,
+    await prisma.$transaction(async (tx) => {
+      // Restore stock for each item (only if order was not already cancelled)
+      if (order.status !== "Cancelled") {
+        for (const item of order.orderItems) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: {
+              stockQuantity: {
+                increment: item.quantity,
+              },
             },
-          },
-        });
+          });
+        }
       }
 
       // Delete order items first (foreign key constraint)
@@ -1441,19 +1483,29 @@ export const deleteOrder = async (
         where: { orderId },
       });
 
+      // Delete returns
+      await tx.return.deleteMany({
+        where: { orderId },
+      });
+
       // Delete order
       await tx.order.delete({
         where: { id: orderId },
       });
     });
 
-    logger.info(`Order ${orderId} deleted successfully`);
+    logger.info(`Order ${orderId} deleted successfully by user ${authReq.user?.userId}`);
 
     res.json({
       status: "success",
       message: "Захиалга амжилттай устгагдлаа",
     });
   } catch (error) {
+    logger.error("Error deleting order:", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      orderId: req.params.id,
+    });
     next(error);
   }
 };

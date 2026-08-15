@@ -6,6 +6,7 @@ import {
   getProductById,
   getProductByBarcode,
   updateProduct,
+  deleteProduct,
   adjustInventory,
 } from "../controllers/products.controller";
 import { authMiddleware, checkRole } from "../middleware/auth.middleware";
@@ -321,6 +322,39 @@ router.put(
     body("isActive").optional().isBoolean(),
   ]),
   updateProduct
+);
+
+/**
+ * @swagger
+ * /api/products/{id}:
+ *   delete:
+ *     summary: Delete product
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Delete a product (Manager/Admin only)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Product ID
+ *     responses:
+ *       200:
+ *         description: Product deleted successfully
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       409:
+ *         description: Cannot delete product with linked orders
+ */
+router.delete(
+  "/:id",
+  checkRole(["Admin", "Manager"]),
+  validate([
+    param("id").isInt().withMessage("Valid product ID is required"),
+  ]),
+  deleteProduct
 );
 
 /**

@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { body } from "express-validator";
-import { login } from "../controllers/auth.controller";
+import { login, getCurrentUser } from "../controllers/auth.controller";
 import { validate } from "../middleware/validation.middleware";
+import { authMiddleware } from "../middleware/auth.middleware";
 
 const router = Router();
 
@@ -108,5 +109,8 @@ router.post(
   ]),
   login
 );
+
+// Get current authenticated user
+router.get("/me", authMiddleware, getCurrentUser);
 
 export default router;
