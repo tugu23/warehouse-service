@@ -314,8 +314,8 @@ CREATE UNIQUE INDEX "roles_name_key" ON "roles"("name");
 -- CreateIndex
 CREATE UNIQUE INDEX "employees_email_key" ON "employees"("email");
 
--- CreateIndex
-CREATE UNIQUE INDEX "products_product_code_key" ON "products"("product_code");
+-- -- CreateIndex
+-- CREATE UNIQUE INDEX "products_product_code_key" ON "products"("product_code");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "orders_order_number_key" ON "orders"("order_number");

@@ -18,7 +18,10 @@ function positiveDecimal(
 export async function resolveOrderItemUnitPrice(
   tx: Tx,
   params: {
-    product: { id: number; defaultPrice: Prisma.Decimal | null };
+    product: {
+      id: number;
+      defaultPrice: Prisma.Decimal | null;
+    };
     customer: { customerTypeId: number | null };
     mode:
       | "auto"
@@ -27,7 +30,10 @@ export async function resolveOrderItemUnitPrice(
       | "defaultPrice"
       | "custom"
       | "customerType";
-    item: { customUnitPrice?: number; unitPrice?: number };
+    item: {
+      customUnitPrice?: number;
+      unitPrice?: number;
+    };
     productName: string;
   }
 ): Promise<Prisma.Decimal> {
@@ -82,7 +88,6 @@ export async function resolveOrderItemUnitPrice(
     return fallback;
   }
 
-  // auto | wholesale | retail | defaultPrice — ижил дүрэм: төрлийн үнэ эсвэл үндсэн
   const ctId = customer.customerTypeId;
   if (ctId != null) {
     const tp = await typePriceFor(ctId);

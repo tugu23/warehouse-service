@@ -33,7 +33,7 @@ export const createProduct = async (
 
     // Check if product code already exists
     if (productCode) {
-      const existingProduct = await prisma.product.findUnique({
+      const existingProduct = await prisma.product.findFirst({
         where: { productCode },
       });
 
@@ -249,7 +249,7 @@ export const updateProduct = async (
 
     // Check if new product code already exists
     if (productCode && productCode !== product.productCode) {
-      const existingProduct = await prisma.product.findUnique({
+      const existingProduct = await prisma.product.findFirst({
         where: { productCode },
       });
 

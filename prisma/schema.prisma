@@ -62,7 +62,7 @@ model Product {
   id                Int                     @id @default(autoincrement())
   nameMongolian     String                  @map("name_mongolian") @db.VarChar(255)
   nameEnglish       String?                 @map("name_english") @db.VarChar(255)
-  productCode       String?                 @unique @map("product_code") @db.VarChar(100)
+  productCode       String?                 @map("product_code") @db.VarChar(100)
   supplierId        Int?                    @map("supplier_id")
   stockQuantity     Int                     @default(0) @map("stock_quantity")
   // Төрлийн тусгай үнэ байхгүй үед ашиглах үндсэн үнэ

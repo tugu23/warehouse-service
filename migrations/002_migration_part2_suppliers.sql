@@ -1,9 +1,15 @@
 -- ============================================
 -- MIGRATION PART 2: SUPPLIERS
--- PRODUCTION READY - COMPLETE DATA
--- Generated: 2026-04-21
+-- Source: aguulah (2) (1).sql
+-- Generated: 2026-10-15
 -- ============================================
 
+BEGIN;
+
+-- ============================================
+-- SUPPLIERS (from uildwerlegch in original - referenced as 'company' in baraa)
+-- Note: Supplier IDs in original start from 13
+-- ============================================
 INSERT INTO suppliers (id, name, contact_info) VALUES (13, 'Сажо', NULL) ON CONFLICT (id) DO NOTHING;
 INSERT INTO suppliers (id, name, contact_info) VALUES (14, 'Шинсун', NULL) ON CONFLICT (id) DO NOTHING;
 INSERT INTO suppliers (id, name, contact_info) VALUES (15, 'Монго', NULL) ON CONFLICT (id) DO NOTHING;
@@ -37,3 +43,13 @@ INSERT INTO suppliers (id, name, contact_info) VALUES (42, 'Нонгшим та�
 INSERT INTO suppliers (id, name, contact_info) VALUES (43, 'Таясан', NULL) ON CONFLICT (id) DO NOTHING;
 INSERT INTO suppliers (id, name, contact_info) VALUES (44, 'Ай Эм Нүүдлс', NULL) ON CONFLICT (id) DO NOTHING;
 INSERT INTO suppliers (id, name, contact_info) VALUES (45, 'Фүүдист', NULL) ON CONFLICT (id) DO NOTHING;
+
+-- Reset sequence
+SELECT setval('suppliers_id_seq', (SELECT MAX(id) FROM suppliers));
+
+COMMIT;
+
+-- ============================================
+-- VERIFICATION
+-- ============================================
+-- SELECT COUNT(*) as supplier_count FROM suppliers;
