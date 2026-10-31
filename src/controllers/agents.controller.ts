@@ -3,6 +3,7 @@ import prisma from "../db/prisma";
 import { AppError } from "../middleware/error.middleware";
 import { AuthRequest } from "../middleware/auth.middleware";
 import logger from "../utils/logger";
+import { isSalesAgent } from "../utils/roles";
 
 export const recordAgentLocation = async (
   req: Request,
@@ -18,7 +19,8 @@ export const recordAgentLocation = async (
 
     // Sales agents can only record their own location
     if (
-      authReq.user?.role === "SalesAgent" &&
+      authReq.user &&
+      isSalesAgent(authReq.user.role) &&
       authReq.user.userId !== agentId
     ) {
       throw new AppError("Та зөвхөн өөрийн байршлыг бүртгэх боломжтой", 403);

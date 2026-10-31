@@ -12,6 +12,7 @@ import {
 } from "../controllers/employees.controller";
 import { authMiddleware, checkRole } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validation.middleware";
+import { SALES_AGENT_ROLE_NAMES } from "../utils/roles";
 
 const router = Router();
 
@@ -127,8 +128,8 @@ router.post(
       .isLength({ min: 6 })
       .withMessage("Password must be at least 6 characters"),
     body("roleName")
-      .isIn(["Admin", "Manager", "SalesAgent"])
-      .withMessage("Role must be Admin, Manager, or SalesAgent"),
+      .isIn(["Admin", "Manager", ...SALES_AGENT_ROLE_NAMES])
+      .withMessage("Role must be Admin, Manager, or Agent"),
   ]),
   createEmployee
 );
@@ -345,8 +346,8 @@ router.put(
     body("phoneNumber").optional().isString(),
     body("roleName")
       .optional()
-      .isIn(["Admin", "Manager", "SalesAgent"])
-      .withMessage("Role must be Admin, Manager, or SalesAgent"),
+      .isIn(["Admin", "Manager", ...SALES_AGENT_ROLE_NAMES])
+      .withMessage("Role must be Admin, Manager, or Agent"),
     body("isActive").optional().isBoolean(),
   ]),
   updateEmployee

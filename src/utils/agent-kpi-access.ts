@@ -1,8 +1,6 @@
 import { AuthRequest } from "../middleware/auth.middleware";
 import { AppError } from "../middleware/error.middleware";
-
-const PRIVILEGED = ["Admin", "Manager"];
-const AGENT_ROLES = ["SalesAgent", "MarketSalesperson", "StoreSalesperson"];
+import { isPrivileged, isSalesAgent } from "./roles";
 
 /**
  * Admin/Manager: must pass agentId query. Agents: may omit agentId (uses own id) or must match self.
@@ -14,14 +12,14 @@ export function assertAgentKpiAgentAccess(
   const user = req.user;
   if (!user) throw new AppError("Нэвтрээгүй", 401);
 
-  if (PRIVILEGED.includes(user.role)) {
+  if (isPrivileged(user.role)) {
     if (requestedAgentId == null || Number.isNaN(requestedAgentId)) {
       throw new AppError("agentId шаардлагатай", 400);
     }
     return requestedAgentId;
   }
 
-  if (AGENT_ROLES.includes(user.role)) {
+  if (isSalesAgent(user.role)) {
     if (
       requestedAgentId != null &&
       !Number.isNaN(requestedAgentId) &&
@@ -38,7 +36,7 @@ export function assertAgentKpiAgentAccess(
 export function assertManagerOrAdmin(req: AuthRequest): void {
   const user = req.user;
   if (!user) throw new AppError("Нэвтрээгүй", 401);
-  if (!PRIVILEGED.includes(user.role)) {
+  if (!isPrivileged(user.role)) {
     throw new AppError("Эрх хүрэлцэхгүй", 403);
   }
 }

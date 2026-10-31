@@ -8,6 +8,7 @@ import { AuthRequest, authMiddleware, checkRole } from "../middleware/auth.middl
 import { validate } from "../middleware/validation.middleware";
 import ebarimtService from "../services/ebarimt.service";
 import logger from "../utils/logger";
+import { isSalesAgent } from "../utils/roles";
 
 const router = Router();
 
@@ -416,7 +417,8 @@ router.post(
       }
 
       if (
-        authReq.user?.role === "SalesAgent" &&
+        authReq.user &&
+      isSalesAgent(authReq.user.role) &&
         order.agentId !== authReq.user.userId
       ) {
         throw new AppError("Өөр ажилтны захиалгад E-Barimt бүртгэх эрхгүй", 403);

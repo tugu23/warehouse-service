@@ -3,6 +3,7 @@ import prisma from "../db/prisma";
 import { AppError } from "../middleware/error.middleware";
 import { AuthRequest } from "../middleware/auth.middleware";
 import ExcelService from "../services/excel.service";
+import { isSalesAgent } from "../utils/roles";
 
 export const getSalesReport = async (
   req: Request,
@@ -701,7 +702,7 @@ export const exportOrdersToExcel = async (
 
     const where: any = {};
 
-    if (authReq.user?.role === "SalesAgent") {
+    if (authReq.user && isSalesAgent(authReq.user.role)) {
       where.agentId = authReq.user.userId;
     }
 
@@ -774,7 +775,7 @@ export const exportCustomersToExcel = async (
 
     const where: any = {};
 
-    if (authReq.user?.role === "SalesAgent") {
+    if (authReq.user && isSalesAgent(authReq.user.role)) {
       where.assignedAgentId = authReq.user.userId;
     }
 

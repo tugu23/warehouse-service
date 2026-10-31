@@ -3,6 +3,7 @@ import prisma from "../db/prisma";
 import { AppError } from "../middleware/error.middleware";
 import { AuthRequest } from "../middleware/auth.middleware";
 import logger from "../utils/logger";
+import { isSalesAgent } from "../utils/roles";
 
 export const createDeliveryPlan = async (
   req: Request,
@@ -119,7 +120,7 @@ export const getAllDeliveryPlans = async (
     const where: any = {};
 
     // Sales agents can only see their own plans
-    if (authReq.user?.role === "SalesAgent") {
+    if (authReq.user && isSalesAgent(authReq.user.role)) {
       where.agentId = authReq.user.userId;
     } else if (agentId) {
       where.agentId = parseInt(agentId);

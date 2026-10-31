@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import prisma from "../db/prisma";
 import { AppError } from "../middleware/error.middleware";
 import logger from "../utils/logger";
+import { findRoleByName } from "../utils/roles";
 
 export const createEmployee = async (
   req: Request,
@@ -22,9 +23,7 @@ export const createEmployee = async (
     }
 
     // Find role
-    const role = await prisma.role.findUnique({
-      where: { name: roleName },
-    });
+    const role = await findRoleByName(prisma, roleName);
 
     if (!role) {
       throw new AppError("Буруу эрх сонгосон байна", 400);
@@ -201,9 +200,7 @@ export const updateEmployee = async (
     if (isActive !== undefined) updateData.isActive = isActive;
 
     if (roleName) {
-      const role = await prisma.role.findUnique({
-        where: { name: roleName },
-      });
+      const role = await findRoleByName(prisma, roleName);
 
       if (!role) {
         throw new AppError("Буруу эрх сонгосон байна", 400);

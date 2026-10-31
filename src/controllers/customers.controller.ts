@@ -3,6 +3,7 @@ import prisma from "../db/prisma";
 import { AppError } from "../middleware/error.middleware";
 import { AuthRequest } from "../middleware/auth.middleware";
 import logger from "../utils/logger";
+import { isSalesAgent } from "../utils/roles";
 
 export const createCustomer = async (
   req: Request,
@@ -98,7 +99,7 @@ export const getAllCustomers = async (
     const where: any = {};
 
     // Sales agents can only see their assigned customers
-    if (authReq.user?.role === "SalesAgent" && !forOrder) {
+    if (authReq.user && isSalesAgent(authReq.user.role) && !forOrder) {
       where.assignedAgentId = authReq.user.userId;
     }
 
@@ -190,7 +191,8 @@ export const getCustomerById = async (
 
     // Sales agents can only see their assigned customers
     if (
-      authReq.user?.role === "SalesAgent" &&
+      authReq.user &&
+      isSalesAgent(authReq.user.role) &&
       customer.assignedAgentId !== authReq.user.userId
     ) {
       throw new AppError(req.t.auth.forbidden, 403);

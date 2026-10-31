@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { config } from "../config";
 import logger from "../utils/logger";
+import { roleMatches } from "../utils/roles";
 
 export interface AuthRequest extends Request {
   user?: {
@@ -78,7 +79,7 @@ export const checkRole = (allowedRoles: string[]) => {
         return;
       }
 
-      if (!allowedRoles.map(r => r.toUpperCase()).includes(authReq.user.role.toUpperCase())) {
+      if (!roleMatches(authReq.user.role, allowedRoles)) {
         res.status(403).json({
           status: "error",
           message: "You do not have permission to access this resource",

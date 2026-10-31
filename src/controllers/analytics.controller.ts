@@ -5,6 +5,7 @@ import { AuthRequest } from "../middleware/auth.middleware";
 import logger from "../utils/logger";
 import analyticsService from "../services/analytics.service";
 import { Prisma } from "@prisma/client";
+import { isSalesAgent } from "../utils/roles";
 
 export const calculateProductSalesAnalytics = async (
   req: Request,
@@ -501,7 +502,7 @@ export const getSalesByPeriod = async (
     };
 
     // Sales agents can only see their own orders
-    if (authReq.user?.role === "SalesAgent") {
+    if (authReq.user && isSalesAgent(authReq.user.role)) {
       where.agentId = authReq.user.userId;
     }
 

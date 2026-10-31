@@ -12,6 +12,7 @@ import { resolveOrderItemUnitPrice } from "../utils/orderPricing";
 import { shouldForceInactiveProduct } from "../utils/productAvailability";
 import { serializeDecimal } from "../utils/serializer";
 import { getBuyXGetYBonusQty, isPromotionCurrentlyActive } from "../utils/promotion.utils";
+import { isSalesAgent } from "../utils/roles";
 
 export const createOrder = async (
   req: Request,
@@ -363,8 +364,11 @@ export const getAllOrders = async (
 
     // Agents must never receive another employee's orders. Keep this on the
     // server rather than relying on clients to pass an agentId filter.
-    if (authReq.user?.role === "SalesAgent") {
-      where.agentId = authReq.user.userId;
+    // Check for both "Agent" and "SalesAgent" role names
+    const userRole = authReq.user?.role;
+    const userId = authReq.user?.userId;
+    if ((userRole === "Agent" || userRole === "SalesAgent") && userId) {
+      where.agentId = userId;
     }
 
     if (status) {
@@ -570,7 +574,7 @@ export const updateOrder = async (
       throw new AppError("Цуцлагдсан захиалгыг засах боломжгүй", 400);
     }
 
-    if (authReq.user?.role === "SalesAgent" && existingOrder.agentId !== authReq.user.userId) {
+    if (authReq.user && isSalesAgent(authReq.user.role) && existingOrder.agentId !== authReq.user.userId) {
       throw new AppError(req.t.auth.forbidden, 403);
     }
 
@@ -913,7 +917,8 @@ export const getOrderReceipt = async (
 
     // Sales agents can only see their own orders
     if (
-      authReq.user?.role === "SalesAgent" &&
+      authReq.user &&
+      isSalesAgent(authReq.user.role) &&
       order.agentId !== authReq.user.userId
     ) {
       throw new AppError(req.t.auth.forbidden, 403);
@@ -1023,7 +1028,8 @@ export const prepareOrderDocument = async (
 
     // Sales agents can only see their own orders
     if (
-      authReq.user?.role === "SalesAgent" &&
+      authReq.user &&
+      isSalesAgent(authReq.user.role) &&
       order.agentId !== authReq.user.userId
     ) {
       throw new AppError(req.t.auth.forbidden, 403);
@@ -1201,7 +1207,8 @@ export const getOrderReceiptPDF = async (
 
     // Sales agents can only see their own orders
     if (
-      authReq.user?.role === "SalesAgent" &&
+      authReq.user &&
+      isSalesAgent(authReq.user.role) &&
       order.agentId !== authReq.user.userId
     ) {
       throw new AppError(req.t.auth.forbidden, 403);
@@ -1429,6 +1436,13 @@ export const deleteOrder = async (
 
     if (!order) {
       throw new AppError("Захиалга олдсонгүй", 404);
+    }
+
+    // SalesAgent can only delete their own orders (check for both "Agent" and "SalesAgent" role names)
+    const userRole = authReq.user?.role;
+    const userId = authReq.user?.userId;
+    if ((userRole === "Agent" || userRole === "SalesAgent") && userId && order.agentId !== userId) {
+      throw new AppError("Өөрний захиалгыг устгах боломжгүй", 403);
     }
 
     // Зөвхөн эдгээр тохиолдолд устгах боломжтой:
