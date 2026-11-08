@@ -18,8 +18,16 @@ echo "=== 2. Rolling pull: шинэ image татах ==="
 docker compose pull backend
 
 echo
+echo "=== 2b. Backend image тохиргоог шалгах ==="
+grep -n -A4 "^  backend:" docker-compose.yml | head -6
+echo "--- шинэ image digest ---"
+docker inspect docker.io/tmshuu/warehouse-service:latest --format '{{index .RepoDigests 0}}' 2>/dev/null || true
+
+echo
 echo "=== 3. Зөвхөн backend-ийг шинэчлэх ==="
-docker compose up -d --no-deps backend
+# --no-build: compose дээр "build: ." байсан ч локал кодоос rebuild хийхгүй,
+# татсан registry image-ийг яг ашиглана. --no-deps: postgres/frontend хэвээр.
+docker compose up -d --no-deps --no-build --force-recreate backend
 
 echo
 echo "=== 4. Health хүлээх (60s) ==="

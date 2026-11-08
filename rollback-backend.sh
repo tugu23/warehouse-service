@@ -44,7 +44,7 @@ grep -n -A3 "^  backend:" docker-compose.yml | head -5
 
 echo
 echo "=== 4. Зөвхөн backend-ийг шинэчлэх ==="
-docker compose up -d --no-deps backend
+docker compose up -d --no-deps --no-build --force-recreate backend
 
 echo
 echo "=== 5. Health хүлээх ==="
