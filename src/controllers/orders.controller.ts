@@ -12,7 +12,7 @@ import { resolveOrderItemUnitPrice } from "../utils/orderPricing";
 import { shouldForceInactiveProduct } from "../utils/productAvailability";
 import { serializeDecimal } from "../utils/serializer";
 import { getBuyXGetYBonusQty, isPromotionCurrentlyActive } from "../utils/promotion.utils";
-import { isSalesAgent } from "../utils/roles";
+import { isPrivileged, isSalesAgent } from "../utils/roles";
 
 export const createOrder = async (
   req: Request,
@@ -1438,11 +1438,23 @@ export const deleteOrder = async (
       throw new AppError("Захиалга олдсонгүй", 404);
     }
 
-    // SalesAgent can only delete their own orders (check for both "Agent" and "SalesAgent" role names)
+    // A sales agent may only delete an order they created themselves; an
+    // admin or manager may delete any order. The check fails closed: if the
+    // role or the user id cannot be resolved the request is rejected rather
+    // than allowed through.
     const userRole = authReq.user?.role;
     const userId = authReq.user?.userId;
-    if ((userRole === "Agent" || userRole === "SalesAgent") && userId && order.agentId !== userId) {
-      throw new AppError("Өөрний захиалгыг устгах боломжгүй", 403);
+
+    if (!userRole || !userId) {
+      throw new AppError("Нэвтрээгүй", 401);
+    }
+
+    if (isSalesAgent(userRole)) {
+      if (order.agentId !== userId) {
+        throw new AppError("Өөрний захиалгыг устгах боломжгүй", 403);
+      }
+    } else if (!isPrivileged(userRole)) {
+      throw new AppError("Эрх хүрэлцэхгүй", 403);
     }
 
     // Зөвхөн эдгээр тохиолдолд устгах боломжтой:
