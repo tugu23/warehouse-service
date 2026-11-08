@@ -11,6 +11,7 @@ import { swaggerSpec } from "./config/swagger";
 import logger from "./utils/logger";
 import { errorHandler, notFoundHandler } from "./middleware/error.middleware";
 import { languageMiddleware } from "./middleware/language.middleware";
+import { scrubPasswordHash } from "./middleware/sanitize-response.middleware";
 
 // Import routes
 import authRoutes from "./routes/auth.routes";
@@ -57,6 +58,9 @@ app.use(
 // Body parsing middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Strip password hashes from every response payload before it is written.
+app.use(scrubPasswordHash);
 
 // Disable caching for API responses
 app.use((req, res, next) => {
