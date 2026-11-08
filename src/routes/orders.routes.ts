@@ -632,7 +632,7 @@ router.post(
  *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
- *     description: Permanently delete an order and restore stock (Admin, Manager only)
+ *     description: Permanently delete an order and restore stock (Admin, Manager, and SalesAgents can delete their own orders)
  *     parameters:
  *       - in: path
  *         name: id
@@ -650,7 +650,7 @@ router.post(
  */
 router.delete(
   "/:id",
-  checkRole(["Admin", "Manager"]),
+  checkRole(["Admin", "Manager", "SalesAgent"]),
   validate([param("id").isInt().withMessage("Valid order ID is required")]),
   deleteOrder
 );
